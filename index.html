@@ -1,0 +1,39 @@
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+    <!-- link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon" / -->
+    <title>WebRTC test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@open-ayame/ayame-web-sdk@2020.3.0/dist/ayame.js"></script>
+    <script src="webrtc-rdp.js"></script>
+</head>
+
+<body>
+
+    <div id="paring" style="display:none">
+        <h2>Pairing</h2>
+
+        <button id="generatePin">Generate PIN</button>
+        <button id="inputPin">Input PIN</button>
+
+        <div id="pinDisplay" style="display:none">
+            PIN:
+            <div id="pin"></div>
+            Open this page in peer device, and input the PIN.
+        </div>
+    </div>
+
+    <div id="rdp" style="display:none">
+        <button id="publishButton">Publish</button>
+        <button id="openButton">Play</button>
+        <button id="clearButton">Clear credential</button>
+        <a href="webxr">WebXR</a>
+
+        <video id="screen" autoplay playsinline controls
+            style="width: 100%; height: calc(100vh - 30pt); border: 1px solid black;display:none;"></video>
+    </div>
+
+</body>
+
+</html>
