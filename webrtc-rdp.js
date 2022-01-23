@@ -44,6 +44,10 @@ class PairingManager extends BaseConnection {
         this.settingsKey = 'webrtc-rdp-settings';
     }
 
+    validatePin(pin) {
+        return pin && pin.length >= this.pinLength;
+    }
+
     async startPairing() {
         console.log("PIN:" + this.pin);
 
@@ -60,7 +64,7 @@ class PairingManager extends BaseConnection {
     }
 
     async sendPin(pin) {
-        if (!pin || pin.length < this.pinLength) {
+        if (!this.validatePin(pin)) {
             throw "invalid pin";
         }
         this.pin = pin;
@@ -215,9 +219,10 @@ class PlayerConnection extends BaseConnection {
 
 
 class StreamManager {
-    constructor(settings) {
+    constructor(settings, onupdate) {
         this.settings = settings;
         this.mediaConnections = [];
+        this.onupdate = onupdate;
     }
 
     async addStream() {
@@ -227,12 +232,18 @@ class StreamManager {
         conn.options.signalingKey = this.settings.signalingKey;
         this.mediaConnections.push(conn);
         conn.connect();
+        this.update();
     }
     connectAll() {
         this.mediaConnections.forEach((c) => c.connect());
+        this.update();
     }
     disconnectAll() {
         this.mediaConnections.forEach((c) => c.disconnect());
+        this.update();
+    }
+    update() {
+        this.onupdate && this.onupdate();
     }
     dispose() {
         this.disconnectAll();
@@ -255,12 +266,20 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     pairing.onsettingsupdate = updateButtonState;
 
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
-        let pin = prompt("Input PIN");
-        pairing.sendPin(pin);
+        document.querySelector("#pinDisplayBox").style.display = "none";
+        document.querySelector("#pinInputBox").style.display = "block";
+    });
+    document.querySelector('#sendPinButton').addEventListener('click', (ev) => {
+        let pin = document.querySelector("#pinInput").value.trim();
+        if (pairing.validatePin(pin)) {
+            pairing.sendPin(pin);
+            document.querySelector("#pinInputBox").style.display = "none";
+        }
     });
     document.querySelector('#generatePin').addEventListener('click', (ev) => {
         pairing.startPairing();
-        document.querySelector("#pinDisplay").style.display = "block";
+        document.querySelector("#pinDisplayBox").style.display = "block";
+        document.querySelector("#pinInputBox").style.display = "none";
         document.querySelector("#pin").innerText = pairing.pin;
     });
     document.querySelector('#clearButton').addEventListener('click', (ev) => {
@@ -270,7 +289,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     document.querySelector('#publishButton').addEventListener('click', (ev) => {
         let settings = pairing.getPeerSettings();
         if (settings) {
-            manager = manager || new StreamManager(settings);
+            manager = manager || new StreamManager(settings, () => {
+                let el = document.querySelector('#streams');
+                el.innerText = "";
+                manager.mediaConnections.forEach((c, i) => {
+                    // TODO: add disconnect/remove button.
+                    el.innerText += (i + 1) + ":" + c.mediaStream.id + "\n";
+                });
+
+            });
             manager.addStream();
         }
     });

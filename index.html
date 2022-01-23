@@ -11,16 +11,24 @@
 
 <body>
 
-    <div id="paring" style="display:none">
+    <div id="paring" style="display:none;text-align: center;">
         <h2>Pairing</h2>
 
-        <button id="generatePin">Generate PIN</button>
-        <button id="inputPin">Input PIN</button>
+        <div style="text-align: center;">
+            <button id="generatePin">Generate PIN</button> or <button id="inputPin">Input PIN</button>
+        </div>
 
-        <div id="pinDisplay" style="display:none">
-            PIN:
-            <div id="pin"></div>
-            Open this page in peer device, and input the PIN.
+        <div id="pinDisplayBox" style="display:none;">
+            <div style="font-size: 40pt;">
+                PIN: <span id="pin"></span>
+            </div>
+            Waiting.... Visit this page on peer device, and input the PIN.
+        </div>
+        <div id="pinInputBox" style="display:none;">
+            <div style="font-size: 40pt;">
+                PIN:<input type="text" inputmode="numeric" maxlength="8" id="pinInput" style="width:200pt;height:50pt;font-size: 40pt;" /> <button id="sendPinButton" style="width:80pt;height:50pt;font-size: 40pt;">Ok</button>
+            </div>
+            Visit this page on peer device, and generate PIN.
         </div>
     </div>
 
@@ -32,6 +40,7 @@
 
         <video id="screen" autoplay playsinline controls
             style="width: 100%; height: calc(100vh - 30pt); border: 1px solid black;display:none;"></video>
+        <div id="streams"></div>
     </div>
 
 </body>
