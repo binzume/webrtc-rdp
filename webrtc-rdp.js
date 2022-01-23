@@ -186,6 +186,7 @@ class PlayerConnection extends BaseConnection {
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
+        this.mediaStream = null;
     }
 
     async connect() {
@@ -206,13 +207,16 @@ class PlayerConnection extends BaseConnection {
             this.updateStaet("connected");
         });
         conn.on('addstream', (ev) => {
+            this.mediaStream = ev.stream;
             this.videoEl.srcObject = ev.stream;
         });
         conn.on('disconnect', async (e) => {
             console.log(e);
             this.updateStaet("disconnected");
             this.conn = null;
-            this.videoEl.srcObject = null;
+            if (this.videoEl.srcObject == this.mediaStream) {
+                this.videoEl.srcObject = null;
+            }
         });
         await conn.connect(this.mediaStream, null);
         this.updateStaet("ready");
@@ -261,6 +265,9 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     let updateButtonState = () => {
         let settings = pairing.getPeerSettings();
+        if (settings) {
+            pairing.disconnect();
+        }
         document.querySelector('#paring').style.display = settings ? "none" : "block";
         document.querySelector('#rdp').style.display = settings ? "block" : "none";
     };
@@ -296,7 +303,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 el.innerText = "";
                 manager.mediaConnections.forEach((c, i) => {
                     // TODO: add disconnect/remove button.
-                    el.innerText += (i + 1) + ":" + c.mediaStream.id + "\n";
+                    el.innerText += "stream" + (i + 1) + ":" + c.mediaStream.id + "\n";
                 });
 
             });
@@ -304,16 +311,30 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         }
     });
 
+    let stream = "1";
     document.querySelector('#openButton').addEventListener('click', (ev) => {
         player?.disconnect();
         let settings = pairing.getPeerSettings();
         if (settings) {
             let videoEl = document.querySelector('#screen');
-            player = new PlayerConnection(settings.roomId + ".1", videoEl);
+            player = new PlayerConnection(settings.roomId + "." + stream, videoEl);
             player.options.signalingKey = settings.signalingKey;
             player.connect();
         }
-
     });
+    document.querySelector('#streamSelect').addEventListener('change', (ev) => {
+        stream = document.querySelector('#streamSelect').value;
+        console.log(stream);
+        if (player) {
+            player?.disconnect();
+            let settings = pairing.getPeerSettings();
+            let videoEl = document.querySelector('#screen');
+            player = new PlayerConnection(settings.roomId + "." + stream, videoEl);
+            player.options.signalingKey = settings.signalingKey;
+            player.connect();
+        }
+    });
+
+
 
 }, { once: true });

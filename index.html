@@ -9,7 +9,7 @@
     <script src="webrtc-rdp.js"></script>
 </head>
 
-<body>
+<body style="padding:0;margin: 0;">
 
     <div id="paring" style="display:none;text-align: center;">
         <h2>Pairing</h2>
@@ -35,11 +35,17 @@
     <div id="rdp" style="display:none">
         <button id="publishButton">Publish</button>
         <button id="openButton">Play</button>
-        <button id="clearButton">Clear Peer Setting</button>
+        <select id="streamSelect">
+            <option value="1">stream1</option>
+            <option value="2">stream2</option>
+            <option value="3">stream3</option>
+            <option value="4">stream4</option>
+        </select>
+        <button id="clearButton">Clear Pairing Setting</button>
         <a href="webxr">WebXR</a>
 
         <video id="screen" autoplay playsinline controls
-            style="width: 100%; height: calc(100vh - 30pt); border: 1px solid black;display:none;"></video>
+            style="width: 100%; height: calc(100vh - 30pt); border: 0px;display:none;"></video>
         <div id="streams"></div>
     </div>
 
