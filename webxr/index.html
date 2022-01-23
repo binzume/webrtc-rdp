@@ -18,15 +18,15 @@
       <img id="rdp-loading" src="images/loading.png" />
     </a-assets>
 
-    <a-xywindow id="app" title="RDP Window" webrtc-rdp xyresize="minWidth:10" scale='0.2 0.2 0.2' width="10" height="6" position="0 1 -4" xy-drag-control="draggable:[name=screen];autoRotate:true" xycontainer="direction:column">
+    <a-xywindow id="app" title="RDP Window" webrtc-rdp="settingName:webrtc-rdp-settings" xyresize="minWidth:10" scale='0.2 0.2 0.2' width="10" height="6" position="0 1 -4" xy-drag-control="draggable:[name=screen];autoRotate:true" xycontainer="direction:column">
       <a-video name="screen" width="10" height="6" src="#rdp-loading" material="npot:true;shader: flat;"></a-video>
       <a-entity xyrect="height:0">
       <a-xycontainer class="control" direction="column" width="8" height="2" position="0 1.1 0.05">
         <a-entity xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:8;height:2" position="0 0 -0.02" material="color:#444; opacity:0.8"></a-entity>
-        <a-xycontainer direction="row" width="5" height="0.8" spacing="0.2" justify-items="space-between">
-          <a-xyselect name="roomSelect" width="1" height="0.6" toggle="true" select="0" values="1,2,3,4"></a-xyselect>
-          <a-xybutton name="connectButton" width="1.5" height="0.8">
-            <a-xylabel width="1.5" height="0.4" wrap-count="10" value="Connect!"></a-xylabel>
+        <a-xycontainer direction="row" width="4" height="1" spacing="0.2" justify-items="space-between">
+          <a-xyselect name="roomSelect" width="1" height="0.8" toggle="true" select="0" values="1,2,3,4"></a-xyselect>
+          <a-xybutton name="connectButton" width="2" height="0.8">
+            <a-xylabel width="1.8" height="0.5" wrap-count="9" value="Connect!"></a-xylabel>
           </a-xybutton>
         </a-xycontainer>
       </a-xycontainer>

@@ -5,9 +5,9 @@
 AFRAME.registerComponent('webrtc-rdp', {
 	schema: {
 		signalingUrl: { default: "wss://ayame-labo.shiguredo.jp/signaling" },
+		settingName: { default: "" },
 		roomId: { default: "" },
 		loadingSrc: { default: "#rdp-loading" },
-		settingName: { default: 'webrtc-rdp-settings' },
 		maxWidth: { default: 16 },
 		maxHeight: { default: 16 },
 	},
@@ -27,6 +27,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this._byName("roomSelect").addEventListener('change', ev => { this.roomIdSuffix = ev.detail.value; console.log("room:", ev.detail); });
 
 		let showControls = visible => {
+			visible = visible || this.conn == null;
 			this.el.querySelectorAll(".control")
 				.forEach(el => el.setAttribute("visible", visible));
 			if (this.el.components.xywindow) {
