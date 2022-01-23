@@ -61,7 +61,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		console.log("connecting... " + signalingUrl + " " + roomId);
 		if (this.el.components.xywindow && roomId) {
-			this.el.setAttribute("xywindow", "title", "RDP: " + roomId);
+			this.el.setAttribute("xywindow", "title", "RDP: " + this.roomIdSuffix);
 		}
 
 		// video element
