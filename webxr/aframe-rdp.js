@@ -5,9 +5,9 @@
 AFRAME.registerComponent('webrtc-rdp', {
 	schema: {
 		signalingUrl: { default: "wss://ayame-labo.shiguredo.jp/signaling" },
-		roomIdPrefix: { default: "binzume-rdp-room-" },
+		roomId: { default: "" },
 		loadingSrc: { default: "#rdp-loading" },
-		mediaController: { default: "media-controller" },
+		settingName: { default: 'webrtc-rdp-settings' },
 		maxWidth: { default: 16 },
 		maxHeight: { default: 16 },
 	},
@@ -49,10 +49,14 @@ AFRAME.registerComponent('webrtc-rdp', {
 	connect() {
 		this.disconnect();
 		let signalingUrl = this.data.signalingUrl;
-		let roomId = this.data.roomIdPrefix + localStorage.getItem('binzume-webrtc-secret') + "." + this.roomIdSuffix;
 		let clientId = null;
-		let signalingKey = null;
 		let Ayame = globalThis.Ayame;
+		let settings = { signalingKey: null, roomId: this.data.roomId };
+		if (this.data.settingName != "") {
+			let s = localStorage.getItem(this.data.settingName);
+			settings = s ? JSON.parse(s) : settings;
+		}
+		let roomId = settings.roomId + "." + this.roomIdSuffix;
 
 		console.log("connecting... " + signalingUrl + " " + roomId);
 		if (this.el.components.xywindow && roomId) {
@@ -84,9 +88,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		// connect
 		const options = Ayame.defaultOptions;
 		options.clientId = clientId ? clientId : options.clientId;
-		if (signalingKey) {
-			options.signalingKey = signalingKey;
-		}
+		options.signalingKey = settings.signalingKey;
 		options.video.direction = 'recvonly';
 		options.audio.direction = 'recvonly';
 		let conn = Ayame.connection(signalingUrl, roomId, options, true);

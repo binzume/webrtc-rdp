@@ -1,17 +1,47 @@
 'use strict';
 
 const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
+const signalingKey = null;
 const roomIdPrefix = "binzume-rdp-room-";
 const roomIdPinPrefix = "binzume-rdp-pin-";
 const debugLog = true;
+const settingsVersion = 1;
 
-class PairingManager {
-    constructor() {
+
+class BaseConnection {
+    constructor(roomId) {
+        this.roomId = roomId;
         this.conn = null;
         this.dataChannel = null;
-        this.pin = this._generatePin();
+        this.onstatechange = null;
+        this.state = "disconnected";
+        this.options = Object.assign({}, Ayame.defaultOptions);
+        this.options.video = Object.assign({}, this.options.video);
+        this.options.audio = Object.assign({}, this.options.audio);
+    }
+    async connect() {
+    }
+    disconnect() {
+        this.updateStaet("disconnected");
+        this.conn && this.conn.disconnect();
+        this.conn = null;
+        this.dataChannel = null;
+    }
+    updateStaet(s) {
+        console.log(this.roomId, s);
+        this.onstatechange && this.onstatechange(s);
+        this.state = s;
+    }
+}
+
+class PairingManager extends BaseConnection {
+    constructor(pin = null) {
+        super(null);
         this.pinLength = 6;
-        this.onupdate = null;
+        this.pin = pin || this._generatePin();
+        this.onsettingsupdate = null;
+        this.userAgent = navigator.userAgent;
+        this.settingsKey = 'webrtc-rdp-settings';
     }
 
     async startPairing() {
@@ -19,11 +49,12 @@ class PairingManager {
 
         await this.connect((ev) => {
             console.log('ch open', ev);
+            this.dataChannel.send(JSON.stringify({ type: "hello", userAgent: this.userAgent }));
         }, (ev) => {
             console.log('ch msg', ev.data);
             let msg = JSON.parse(ev.data);
             if (msg.type == 'credential') {
-                this.setSharedSecret(msg.roomIdSecret);
+                this.setPeerSettings({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
             }
         });
     }
@@ -36,18 +67,22 @@ class PairingManager {
 
         await this.connect((ev) => {
             console.log('ch open', ev);
-            let roomIdSecret = this._generateSecret(16);
-            let token = this._generateSecret(16);
-            this.dataChannel.send(JSON.stringify({ type: "credential", roomIdSecret: roomIdSecret, token: token }));
-            this.setSharedSecret(roomIdSecret);
         }, (ev) => {
-            console.log('ch msg', ev);
+            console.log('ch msg', ev.data);
+            let msg = JSON.parse(ev.data);
+            if (msg.type == 'hello') {
+                let roomId = roomIdPrefix + this._generateSecret(16);
+                let token = this._generateSecret(16);
+                this.dataChannel.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
+                this.setPeerSettings({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+            }
         });
     }
 
     async connect(onopen, onmessage) {
         this.disconnect();
-        const conn = Ayame.connection(signalingUrl, roomIdPinPrefix + this.pin, Ayame.defaultOptions, debugLog);
+        this.roomId = roomIdPinPrefix + this.pin;
+        const conn = Ayame.connection(signalingUrl, this.roomId, Ayame.defaultOptions, debugLog);
         this.conn = conn;
         let initDataChannel = (ch) => {
             if (ch && this.dataChannel == null) {
@@ -77,23 +112,19 @@ class PairingManager {
         return conn;
     }
 
-    setSharedSecret(secret) {
-        if (!secret) {
-            localStorage.removeItem('binzume-webrtc-secret');
+    setPeerSettings(settings) {
+        if (!settings) {
+            localStorage.removeItem(this.settingsKey);
         } else {
-            localStorage.setItem('binzume-webrtc-secret', secret);
+            settings.version = settingsVersion;
+            localStorage.setItem(this.settingsKey, JSON.stringify(settings));
         }
-        this.onupdate && this.onupdate();
+        this.onsettingsupdate && this.onsettingsupdate();
     }
 
-    getSharedSecret() {
-        return localStorage.getItem('binzume-webrtc-secret');
-    }
-
-    disconnect() {
-        this.conn && this.conn.disconnect();
-        this.conn = null;
-        this.dataChannel = null;
+    getPeerSettings() {
+        let s = localStorage.getItem(this.settingsKey);
+        return s ? JSON.parse(s) : null;
     }
 
     _generatePin() {
@@ -106,21 +137,17 @@ class PairingManager {
     }
 }
 
-class MediaConnection {
+class MediaConnection extends BaseConnection {
     constructor(roomId, mediaStream) {
-        this.roomId = roomId;
-        this.mediaStream = mediaStream;
-        this.conn = null;
-        this.dataChannel = null;
-        this.state = "disconnected";
-        this.options = Object.assign({}, Ayame.defaultOptions);
-        this.options.video = Object.assign({}, this.options.video);
-        this.options.audio = Object.assign({}, this.options.audio);
+        super(roomId);
         this.options.video.direction = 'sendonly';
         this.options.audio.direction = 'sendonly';
-        this.onstatechange = null;
+        this.mediaStream = mediaStream;
     }
     async connect() {
+        if (this.conn) {
+            return;
+        }
         let roomId = this.roomId;
         let options = this.options;
         console.log("connecting..." + signalingUrl + " " + roomId, options);
@@ -133,48 +160,32 @@ class MediaConnection {
         });
 
         conn.on('disconnect', async (e) => {
-            console.log(e);
+            console.log(e, this.state);
+            this.conn = null;
             if (this.state == "connected" || this.state == "ready") {
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 this.connect();
             } else {
-                this.updateStaet("disconnected");
-                this.conn = null;
+                this.disconnect();
             }
         });
         await conn.connect(this.mediaStream, null);
         this.updateStaet("ready");
-        console.log(roomId);
-    }
-    disconnect() {
-        this.updateStaet("disconnected");
-        this.conn && this.conn.disconnect();
-        this.conn = null;
-    }
-    updateStaet(s) {
-        console.log(this.roomId, s);
-        this.onstatechange && this.onstatechange(s);
-        this.state = s;
     }
 }
 
-
-class PlayerConnection {
+class PlayerConnection extends BaseConnection {
     constructor(roomId, videoEl) {
-        this.roomId = roomId;
-        this.videoEl = videoEl;
-        this.conn = null;
-        this.dataChannel = null;
-        this.state = "disconnected";
-        this.options = Object.assign({}, Ayame.defaultOptions);
-        this.options.video = Object.assign({}, this.options.video);
-        this.options.audio = Object.assign({}, this.options.audio);
+        super(roomId);
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
-        this.onstatechange = null;
+        this.videoEl = videoEl;
     }
 
     async connect() {
+        if (this.conn) {
+            return;
+        }
         let roomId = this.roomId;
         let options = this.options;
         console.log("connecting..." + signalingUrl + " " + roomId, options);
@@ -199,32 +210,21 @@ class PlayerConnection {
         });
         await conn.connect(this.mediaStream, null);
         this.updateStaet("ready");
-        console.log(roomId);
-    }
-
-    disconnect() {
-        this.updateStaet("disconnected");
-        this.conn && this.conn.disconnect();
-        this.conn = null;
-    }
-    updateStaet(s) {
-        console.log(this.roomId, s);
-        this.onstatechange && this.onstatechange(s);
-        this.state = s;
     }
 }
 
 
 class StreamManager {
-    constructor(secret) {
-        this.secret = secret;
+    constructor(settings) {
+        this.settings = settings;
         this.mediaConnections = [];
     }
 
     async addStream() {
-        let roomId = roomIdPrefix + this.secret + "." + (this.mediaConnections.length + 1);
+        let roomId = this.settings.roomId + "." + (this.mediaConnections.length + 1);
         let mediaStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }); // mediaDevices.getUserMedia()
         let conn = new MediaConnection(roomId, mediaStream);
+        conn.options.signalingKey = this.settings.signalingKey;
         this.mediaConnections.push(conn);
         conn.connect();
     }
@@ -241,44 +241,18 @@ class StreamManager {
 }
 
 
-function play(roomId) {
-    let options = Object.assign({}, Ayame.defaultOptions);
-    options.video = Object.assign({}, options.video);
-    options.audio = Object.assign({}, options.audio);
-
-    options.video.direction = 'recvonly';
-    options.audio.direction = 'recvonly';
-    videoEl.style.display = "block";
-    let conn;
-    const startConn = async () => {
-        // options.video.codec = videoCodec;
-        conn = Ayame.connection(signalingUrl, roomId, options, debugLog);
-        await conn.connect(null);
-        conn.on('open', ({ authzMetadata }) => console.log(authzMetadata));
-        conn.on('disconnect', (e) => {
-            console.log(e);
-            videoEl.srcObject = null;
-        });
-        conn.on('addstream', (e) => {
-            videoEl.srcObject = e.stream;
-        });
-    };
-    startConn();
-    console.log(roomId);
-}
-
 window.addEventListener('DOMContentLoaded', (ev) => {
     let pairing = new PairingManager();
     let manager = null;
     let player = null;
 
     let updateButtonState = () => {
-        let secret = pairing.getSharedSecret();
-        document.querySelector('#paring').style.display = secret ? "none" : "block";
-        document.querySelector('#rdp').style.display = secret ? "block" : "none";
+        let settings = pairing.getPeerSettings();
+        document.querySelector('#paring').style.display = settings ? "none" : "block";
+        document.querySelector('#rdp').style.display = settings ? "block" : "none";
     };
     updateButtonState();
-    pairing.onupdate = updateButtonState;
+    pairing.onsettingsupdate = updateButtonState;
 
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
         let pin = prompt("Input PIN");
@@ -290,20 +264,27 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#pin").innerText = pairing.pin;
     });
     document.querySelector('#clearButton').addEventListener('click', (ev) => {
-        pairing.setSharedSecret(null);
+        pairing.setPeerSettings(null);
     });
 
     document.querySelector('#publishButton').addEventListener('click', (ev) => {
-        manager = manager || new StreamManager(pairing.getSharedSecret());
-        manager.addStream();
+        let settings = pairing.getPeerSettings();
+        if (settings) {
+            manager = manager || new StreamManager(settings);
+            manager.addStream();
+        }
     });
 
     document.querySelector('#openButton').addEventListener('click', (ev) => {
         player?.disconnect();
-        let roomId = roomIdPrefix + pairing.getSharedSecret() + "." + 1;
-        let videoEl = document.querySelector('#screen');
-        player = new PlayerConnection(roomId, videoEl);
-        player.connect();
+        let settings = pairing.getPeerSettings();
+        if (settings) {
+            let videoEl = document.querySelector('#screen');
+            player = new PlayerConnection(settings.roomId + ".1", videoEl);
+            player.options.signalingKey = settings.signalingKey;
+            player.connect();
+        }
+
     });
 
 }, { once: true });
