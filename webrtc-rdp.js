@@ -1,9 +1,10 @@
 'use strict';
 
+// Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
-const signalingKey = null;
-const roomIdPrefix = "binzume-rdp-room-";
-const roomIdPinPrefix = "binzume-rdp-pin-";
+const signalingKey = 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F'; // or null;
+const roomIdPrefix = "binzume@rdp-room-";
+const roomIdPinPrefix = "binzume@rdp-pin-";
 const debugLog = true;
 const settingsVersion = 1;
 
@@ -42,6 +43,7 @@ class PairingManager extends BaseConnection {
         this.onsettingsupdate = null;
         this.userAgent = navigator.userAgent;
         this.settingsKey = 'webrtc-rdp-settings';
+        this.options.signalingKey = signalingKey;
     }
 
     validatePin(pin) {
@@ -86,7 +88,7 @@ class PairingManager extends BaseConnection {
     async connect(onopen, onmessage) {
         this.disconnect();
         this.roomId = roomIdPinPrefix + this.pin;
-        const conn = Ayame.connection(signalingUrl, this.roomId, Ayame.defaultOptions, debugLog);
+        const conn = Ayame.connection(signalingUrl, this.roomId, this.options, debugLog);
         this.conn = conn;
         let initDataChannel = (ch) => {
             if (ch && this.dataChannel == null) {
