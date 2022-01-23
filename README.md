@@ -15,6 +15,13 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 - Oculus Quest 2 で動作確認しています
 - [binzume/vr-workspace](https://github.com/binzume/vr-workspace)に追加する前提の実装です
 
+## Security
+
+- P2Pなので，同じネットワーク内で使う場合は共有している映像や音声などはインターネットを経由しません．
+- デモの実装ではAyame Laboを使って接続します．セキュアな接続が必要な場合は自分の環境でAyameを起動して使ってください．
+- 接続にAyame Laboを使っている場合，何らかの理由でRoomIdが漏れると他者が接続できる可能性があるので，接続を待機した状態で放置しないでください．
+- RoomIdはPINの交換時にランダムな文字列から生成して共有します．
+
 ## TODO
 
 - 見た目をまともにする
