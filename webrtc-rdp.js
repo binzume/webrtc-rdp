@@ -13,20 +13,46 @@ class BaseConnection {
     constructor(roomId) {
         this.roomId = roomId;
         this.conn = null;
-        this.dataChannel = null;
+        this.dataChannels = {};
         this.onstatechange = null;
         this.state = "disconnected";
         this.options = Object.assign({}, Ayame.defaultOptions);
         this.options.video = Object.assign({}, this.options.video);
         this.options.audio = Object.assign({}, this.options.audio);
     }
-    async connect() {
+    setupConnection() {
+        console.log("connecting..." + signalingUrl + " " + this.roomId);
+        this.updateStaet("connecting");
+
+        let conn = this.conn = Ayame.connection(signalingUrl, this.roomId, this.options, debugLog);
+        conn.on('open', async (e) => {
+            console.log('open', e, this.dataChannels);
+            for (let c of Object.keys(this.dataChannels)) {
+                console.log("add dataChannel", c);
+                this.handleDataChannel(await conn.createDataChannel(c));
+            }
+            this.updateStaet("ready");
+        });
+        conn.on('connect', (e) => {
+            this.updateStaet("connected");
+        });
+        conn.on('datachannel', (channel) => {
+            console.log('datachannel', channel);
+            this.handleDataChannel(channel);
+        });
+        conn.on('disconnect', (e) => {
+            this.conn = null;
+            console.log(e);
+            this.disconnect();
+        });
+        return conn;
     }
     disconnect() {
         this.updateStaet("disconnected");
-        this.conn && this.conn.disconnect();
+        this.conn?.on('disconnect', () => { });
+        this.conn?.disconnect();
         this.conn = null;
-        this.dataChannel = null;
+        this.dataChannels = {};
     }
     updateStaet(s) {
         if (s != this.state) {
@@ -35,13 +61,26 @@ class BaseConnection {
             this.state = s;
         }
     }
+    handleDataChannel(ch) {
+        if (!ch) return;
+        let c = this.dataChannels[ch.label];
+        console.log(c);
+        if (c && !c.ch) {
+            c.ch = ch;
+            ch.onmessage = c.onmessage;
+            ch.onopen = c.onopen;
+        }
+    }
+    sendData(chLabel, data) {
+        this.dataChannels[chLabel].ch?.send(data);
+    }
 }
 
 class PairingManager extends BaseConnection {
-    constructor(pin = null) {
+    constructor() {
         super(null);
         this.pinLength = 6;
-        this.pin = pin || this._generatePin();
+        this.pin = null;
         this.onsettingsupdate = null;
         this.userAgent = navigator.userAgent;
         this.settingsKey = 'webrtc-rdp-settings';
@@ -55,70 +94,53 @@ class PairingManager extends BaseConnection {
 
     async startPairing() {
         console.log("PIN:" + this.pin);
+        this.pin = this._generatePin();
+        this.disconnect();
 
-        await this.connect((ev) => {
-            console.log('ch open', ev);
-            this.dataChannel.send(JSON.stringify({ type: "hello", userAgent: this.userAgent }));
-        }, (ev) => {
-            console.log('ch msg', ev.data);
-            let msg = JSON.parse(ev.data);
-            if (msg.type == 'credential') {
-                this.setPeerSettings({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
-            }
-        });
+        this.dataChannels['secretExchange'] = {
+            onopen: (ev) => {
+                console.log('ch open', ev);
+                ev.target.send(JSON.stringify({ type: "hello", userAgent: this.userAgent }));
+            },
+            onmessage: (ev) => {
+                console.log('ch msg', ev.data);
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'credential') {
+                    this.setPeerSettings({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                }
+            },
+        };
+        await this.connect();
     }
 
     async sendPin(pin) {
         if (!this.validatePin(pin)) {
             throw "invalid pin";
         }
+        this.disconnect();
         this.pin = pin;
 
-        await this.connect((ev) => {
-            console.log('ch open', ev);
-        }, (ev) => {
-            console.log('ch msg', ev.data);
-            let msg = JSON.parse(ev.data);
-            if (msg.type == 'hello') {
-                let roomId = roomIdPrefix + this._generateSecret(16);
-                let token = this._generateSecret(16);
-                this.dataChannel.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
-                this.setPeerSettings({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
-            }
-        });
+        this.dataChannels['secretExchange'] = {
+            onopen: (ev) => {
+                console.log('ch open', ev);
+            },
+            onmessage: (ev) => {
+                console.log('ch msg', ev.data);
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'hello') {
+                    let roomId = roomIdPrefix + this._generateSecret(16);
+                    let token = this._generateSecret(16);
+                    ev.target.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
+                    this.setPeerSettings({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+                }
+            },
+        };
+        await this.connect();
     }
 
-    async connect(onopen, onmessage) {
-        this.disconnect();
+    async connect() {
         this.roomId = roomIdPinPrefix + this.pin;
-        const conn = Ayame.connection(signalingUrl, this.roomId, this.options, debugLog);
-        this.conn = conn;
-        let initDataChannel = (ch) => {
-            if (ch && this.dataChannel == null) {
-                this.dataChannel = ch;
-                this.dataChannel.onmessage = onmessage;
-                this.dataChannel.onopen = onopen;
-            }
-        }
-        conn.on('open', async (e) => {
-            console.log('open', e);
-            initDataChannel(await conn.createDataChannel('secretExchange'));
-        });
-        conn.on('connect', (e) => {
-            this.updateStaet("connected");
-        });
-        conn.on('datachannel', (channel) => {
-            console.log('datachannel', channel);
-            initDataChannel(channel);
-        });
-        conn.on('disconnect', (e) => {
-            console.log('disconnect', e);
-            this.dataChannel = null;
-            this.conn = null;
-        });
-        await conn.connect(null);
-        this.updateStaet("ready");
-        return conn;
+        await this.setupConnection().connect(null);
     }
 
     setPeerSettings(settings) {
@@ -137,7 +159,7 @@ class PairingManager extends BaseConnection {
     }
 
     _generatePin() {
-        return (Math.floor(Math.random() * 1000000) + "000000").substring(0, 6);
+        return (Math.floor(Math.random() * 1000000) + "000000").substring(0, this.pinLength);
     }
 
     _generateSecret(n) {
@@ -147,27 +169,30 @@ class PairingManager extends BaseConnection {
 }
 
 class MediaConnection extends BaseConnection {
-    constructor(roomId, mediaStream) {
+    constructor(roomId, mediaStream, mouseSoc = null) {
         super(roomId);
         this.options.video.direction = 'sendonly';
         this.options.audio.direction = 'sendonly';
         this.mediaStream = mediaStream;
+        this.mouseSoc = mouseSoc;
     }
     async connect() {
         if (this.conn) {
             return;
         }
-        let roomId = this.roomId;
-        let options = this.options;
-        console.log("connecting..." + signalingUrl + " " + roomId, options);
-        this.updateStaet("connecting");
 
-        let conn = this.conn = Ayame.connection(signalingUrl, roomId, options, debugLog);
+        this.dataChannels['controlEvent'] = {
+            onmessage: (ev) => {
+                let msg = JSON.parse(ev.data);
+                if (this.mouseSoc?.readyState == 1 && msg.type == 'click' || msg.type == 'mouseupdate') {
+                    this.mouseSoc.send(ev.data);
+                } else {
+                    console.log("TODO:", msg);
+                }
+            }
+        };
 
-        conn.on('connect', async (e) => {
-            this.updateStaet("connected");
-        });
-
+        const conn = this.setupConnection();
         conn.on('disconnect', async (e) => {
             console.log(e, this.state);
             this.conn = null;
@@ -179,7 +204,6 @@ class MediaConnection extends BaseConnection {
             }
         });
         await conn.connect(this.mediaStream, null);
-        this.updateStaet("ready");
     }
 }
 
@@ -196,31 +220,26 @@ class PlayerConnection extends BaseConnection {
         if (this.conn) {
             return;
         }
-        let roomId = this.roomId;
-        let options = this.options;
-        console.log("connecting..." + signalingUrl + " " + roomId, options);
-        this.updateStaet("connecting");
 
-        let conn = this.conn = Ayame.connection(signalingUrl, roomId, options, debugLog);
+        this.dataChannels['controlEvent'] = {};
 
-        conn.on('open', ({ authzMetadata }) => console.log(authzMetadata));
-        conn.on('connect', async (e) => {
-            this.updateStaet("connected");
-        });
+        const conn = this.setupConnection();
         conn.on('addstream', (ev) => {
             this.mediaStream = ev.stream;
             this.videoEl.srcObject = ev.stream;
         });
         conn.on('disconnect', async (e) => {
             console.log(e);
-            this.updateStaet("disconnected");
             this.conn = null;
+            this.disconnect();
             if (this.videoEl.srcObject == this.mediaStream) {
                 this.videoEl.srcObject = null;
             }
         });
         await conn.connect(this.mediaStream, null);
-        this.updateStaet("ready");
+    }
+    sendMouseEvent(type, x, y, button) {
+        this.sendData('controlEvent', JSON.stringify({ type: type, x: x, y: y, button: button }));
     }
 }
 
@@ -232,10 +251,9 @@ class StreamManager {
         this.onupdate = onupdate;
     }
 
-    async addStream() {
+    addStream(mediaStream, mouseSoc = null) {
         let roomId = this.settings.roomId + "." + (this.mediaConnections.length + 1);
-        let mediaStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }); // mediaDevices.getUserMedia()
-        let conn = new MediaConnection(roomId, mediaStream);
+        let conn = new MediaConnection(roomId, mediaStream, mouseSoc);
         conn.options.signalingKey = this.settings.signalingKey;
         this.mediaConnections.push(conn);
         conn.connect();
@@ -263,6 +281,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let pairing = new PairingManager();
     let manager = null;
     let player = null;
+    let mouseSoc = null;
 
     let updateButtonState = () => {
         let settings = pairing.getPeerSettings();
@@ -275,7 +294,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     updateButtonState();
     pairing.onsettingsupdate = updateButtonState;
 
-    let addStream = () => {
+    let addStream = async () => {
         let settings = pairing.getPeerSettings();
         if (settings) {
             manager = manager || new StreamManager(settings, () => {
@@ -287,14 +306,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 });
 
             });
-            manager.addStream();
+            let mediaStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }); // mediaDevices.getUserMedia()
+            manager.addStream(mediaStream, mouseSoc);
         }
     };
 
+    let videoEl = document.querySelector('#screen');
     let playStream = (n) => {
         player?.disconnect();
         let settings = pairing.getPeerSettings();
-        let videoEl = document.querySelector('#screen');
         videoEl.style.display = "none";
         document.querySelector('#connectingBox').style.display = "block";
         if (settings) {
@@ -309,6 +329,14 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             player.connect();
         }
     };
+    videoEl.addEventListener('click', (ev) => {
+        if (player?.state == "connected") {
+            let rect = videoEl.getBoundingClientRect();
+            let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
+            let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
+            player.sendMouseEvent('click', (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, (ev.clientY - rect.top - (rect.height - vh) / 2) / vh, ev.button);
+        }
+    });
 
     // Pairing
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
@@ -329,7 +357,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             if (state == "connected" || state == "ready") {
                 document.querySelector("#pin").innerText = pairing.pin;
             } else {
-                document.querySelector("#pin").innerText =  "......";
+                document.querySelector("#pin").innerText = "......";
             }
         };
         pairing.startPairing();
@@ -341,6 +369,10 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#select").style.display = "none";
         document.querySelector("#player").style.display = "none";
         document.querySelector("#publisher").style.display = "block";
+        let mouseSocketUrlInputEl = document.querySelector("#mouseSocketUrlInput");
+        if (mouseSocketUrlInputEl?.value) {
+            mouseSoc = new WebSocket(mouseSocketUrlInputEl.value);
+        }
         addStream();
     });
     document.querySelector('#startPlayerButton').addEventListener('click', (ev) => {
