@@ -1,14 +1,18 @@
 # WIP: WebRTC + WebXR RDP Demo
 
-WebRTCとWebXRでPCのデスクトップをWebVR内で表示するためのデモ．作りかけです．
+WebRTCとWebXRでPCのデスクトップをWebVR内で表示するためのデモ．
 
 Demo URL: https://binzume.github.io/webrtc-rdp/
 
 ## Usage
 
-1. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
-2. Publish(スクリーンをシェア) するか Play(シェアされたスクリーンに接続) するか選択してください
-3. Publishする場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
+最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
+
+1. https://binzume.github.io/webrtc-rdp/ にアクセスします
+2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
+3. Publish(スクリーンをシェア) するか Play(シェアされたスクリーンに接続) するか選択してください
+4. Publishする場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
+5. Play時に `WebXR` リンクから VR モードに入れます (Oculus Quest用)
 
 マウスやキーボードの操作はブラウザからはできないので，ワイヤレスキーボード等の別の手段を用意してください．
 (将来的には，PC側でマウスやキーボードをコントロールする何かを起動しておくかChrome拡張あたりで対応するつもりです)
@@ -22,7 +26,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 - [A-Frame](https://aframe.io/)を使っています．
 - Oculus Quest 2 で動作確認しています
-- [binzume/vr-workspace](https://github.com/binzume/vr-workspace)に追加する前提の実装です
+- [binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして呼び出す前提の作りになっています
 
 ## Security
 
