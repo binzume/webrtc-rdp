@@ -11,13 +11,12 @@
 
 <body style="padding:0;margin: 0;">
 
-    <div id="paring" style="display:none;text-align: center;">
-        <h2>Pairing</h2>
+    <div id="pairng" style="display:none;text-align: center;">
+        <h2>Pairing Devices</h2>
 
-        <div style="text-align: center;">
+        <div>
             <button id="generatePin">Generate PIN</button> or <button id="inputPin">Input PIN</button>
         </div>
-
         <div id="pinDisplayBox" style="display:none;">
             <div style="font-size: 40pt;">
                 PIN: <span id="pin"></span>
@@ -26,27 +25,41 @@
         </div>
         <div id="pinInputBox" style="display:none;">
             <div style="font-size: 40pt;">
-                PIN:<input type="text" inputmode="numeric" maxlength="8" id="pinInput" style="width:200pt;height:50pt;font-size: 40pt;" /> <button id="sendPinButton" style="width:80pt;height:50pt;font-size: 40pt;">Ok</button>
+                PIN:<input type="text" inputmode="numeric" maxlength="8" id="pinInput" style="width:200pt;height:50pt;font-size: 40pt" /><button id="sendPinButton" style="width:80pt;height:50pt;font-size: 40pt">OK</button>
             </div>
             Visit this page on peer device, and generate PIN.
         </div>
+
+        <a href="https://github.com/binzume/webrtc-rdp/blob/master/README.md">README.md</a>
+
     </div>
 
-    <div id="rdp" style="display:none">
-        <button id="publishButton">Publish</button>
-        <button id="openButton">Play</button>
-        <select id="streamSelect">
-            <option value="1">stream1</option>
-            <option value="2">stream2</option>
-            <option value="3">stream3</option>
-            <option value="4">stream4</option>
-        </select>
-        <button id="clearButton">Clear Pairing Setting</button>
-        <a href="webxr">WebXR</a>
 
-        <video id="screen" autoplay playsinline controls
-            style="width: 100%; height: calc(100vh - 30pt); border: 0px;display:none;"></video>
-        <div id="streams"></div>
+    <div id="publishOrPlay" style="display:none;text-align: center">
+
+        <div id="select" style="margin: 50pt 0">
+            <button id="startPublisherButton" style="width:30%;height:80pt">Publush (Share My Desktop)</button>
+            <button id="startPlayerButton" style="width:30%;height:80pt">Play (Connect to Remote Desktop)</button><br />
+            or <button id="clearSettingsButton">Clear Setting</button> to re-pairing.
+        </div>
+
+        <div id="player" style="display:none">
+            <button id="playButton">Play</button>
+            <select id="streamSelect">
+                <option value="1">stream1</option>
+                <option value="2">stream2</option>
+                <option value="3">stream3</option>
+                <option value="4">stream4</option>
+            </select>
+            <a href="webxr">WebXR</a>
+            <video id="screen" autoplay playsinline style="width: 100%; height: calc(100vh - 30pt); border: 0px; display:none;"></video>
+            <div id="connectingBox" style="margin: 50pt 0;font-size: 40pt;" >Connecting...</div>
+        </div>
+
+        <div id="publisher" style="display:none">
+            <button id="addStreamButton">Publish New Stream</button>
+            <div id="streams"></div>
+        </div>
     </div>
 
 </body>

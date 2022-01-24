@@ -4,6 +4,15 @@ WebRTCとWebXRでPCのデスクトップをWebVR内で表示するためのデ�
 
 Demo URL: https://binzume.github.io/webrtc-rdp/
 
+## Usage
+
+1. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
+2. Publish(スクリーンをシェア) するか Play(シェアされたスクリーンに接続) するか選択してください
+3. Publishする場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
+
+マウスやキーボードの操作はブラウザからはできないので，ワイヤレスキーボード等の別の手段を用意してください．
+(将来的には，PC側でマウスやキーボードをコントロールする何かを起動しておくかChrome拡張あたりで対応するつもりです)
+
 ## WebRTC
 
 - WebRTC Signaling Serverは[OpenAyame/ayame](https://github.com/OpenAyame/ayame)を使います

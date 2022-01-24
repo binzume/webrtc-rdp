@@ -29,9 +29,11 @@ class BaseConnection {
         this.dataChannel = null;
     }
     updateStaet(s) {
-        console.log(this.roomId, s);
-        this.onstatechange && this.onstatechange(s);
-        this.state = s;
+        if (s != this.state) {
+            console.log(this.roomId, s);
+            this.onstatechange && this.onstatechange(s);
+            this.state = s;
+        }
     }
 }
 
@@ -44,6 +46,7 @@ class PairingManager extends BaseConnection {
         this.userAgent = navigator.userAgent;
         this.settingsKey = 'webrtc-rdp-settings';
         this.options.signalingKey = signalingKey;
+        // TODO pinTimeoutSec = 3600;
     }
 
     validatePin(pin) {
@@ -102,7 +105,7 @@ class PairingManager extends BaseConnection {
             initDataChannel(await conn.createDataChannel('secretExchange'));
         });
         conn.on('connect', (e) => {
-            console.log('connect', e);
+            this.updateStaet("connected");
         });
         conn.on('datachannel', (channel) => {
             console.log('datachannel', channel);
@@ -114,7 +117,7 @@ class PairingManager extends BaseConnection {
             this.conn = null;
         });
         await conn.connect(null);
-        console.log("connected");
+        this.updateStaet("ready");
         return conn;
     }
 
@@ -200,8 +203,6 @@ class PlayerConnection extends BaseConnection {
 
         let conn = this.conn = Ayame.connection(signalingUrl, roomId, options, debugLog);
 
-        this.videoEl.style.display = "block";
-
         conn.on('open', ({ authzMetadata }) => console.log(authzMetadata));
         conn.on('connect', async (e) => {
             this.updateStaet("connected");
@@ -268,34 +269,13 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         if (settings) {
             pairing.disconnect();
         }
-        document.querySelector('#paring').style.display = settings ? "none" : "block";
-        document.querySelector('#rdp').style.display = settings ? "block" : "none";
+        document.querySelector('#pairng').style.display = settings ? "none" : "block";
+        document.querySelector('#publishOrPlay').style.display = settings ? "block" : "none";
     };
     updateButtonState();
     pairing.onsettingsupdate = updateButtonState;
 
-    document.querySelector('#inputPin').addEventListener('click', (ev) => {
-        document.querySelector("#pinDisplayBox").style.display = "none";
-        document.querySelector("#pinInputBox").style.display = "block";
-    });
-    document.querySelector('#sendPinButton').addEventListener('click', (ev) => {
-        let pin = document.querySelector("#pinInput").value.trim();
-        if (pairing.validatePin(pin)) {
-            pairing.sendPin(pin);
-            document.querySelector("#pinInputBox").style.display = "none";
-        }
-    });
-    document.querySelector('#generatePin').addEventListener('click', (ev) => {
-        pairing.startPairing();
-        document.querySelector("#pinDisplayBox").style.display = "block";
-        document.querySelector("#pinInputBox").style.display = "none";
-        document.querySelector("#pin").innerText = pairing.pin;
-    });
-    document.querySelector('#clearButton').addEventListener('click', (ev) => {
-        pairing.setPeerSettings(null);
-    });
-
-    document.querySelector('#publishButton').addEventListener('click', (ev) => {
+    let addStream = () => {
         let settings = pairing.getPeerSettings();
         if (settings) {
             manager = manager || new StreamManager(settings, () => {
@@ -309,32 +289,86 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             });
             manager.addStream();
         }
-    });
+    };
 
-    let stream = "1";
-    document.querySelector('#openButton').addEventListener('click', (ev) => {
+    let playStream = (n) => {
         player?.disconnect();
         let settings = pairing.getPeerSettings();
+        let videoEl = document.querySelector('#screen');
+        videoEl.style.display = "none";
+        document.querySelector('#connectingBox').style.display = "block";
         if (settings) {
-            let videoEl = document.querySelector('#screen');
-            player = new PlayerConnection(settings.roomId + "." + stream, videoEl);
+            player = new PlayerConnection(settings.roomId + "." + n, videoEl);
+            player.onstatechange = (state) => {
+                if (state == "connected") {
+                    videoEl.style.display = "block";
+                    document.querySelector('#connectingBox').style.display = "none";
+                }
+            };
             player.options.signalingKey = settings.signalingKey;
             player.connect();
         }
+    };
+
+    // Pairing
+    document.querySelector('#inputPin').addEventListener('click', (ev) => {
+        document.querySelector("#pinDisplayBox").style.display = "none";
+        document.querySelector("#pinInputBox").style.display = "block";
+    });
+    document.querySelector('#sendPinButton').addEventListener('click', (ev) => {
+        let pin = document.querySelector("#pinInput").value.trim();
+        if (pairing.validatePin(pin)) {
+            pairing.sendPin(pin);
+            document.querySelector("#pinInputBox").style.display = "none";
+        }
+    });
+    document.querySelector('#generatePin').addEventListener('click', async (ev) => {
+        document.querySelector("#pinDisplayBox").style.display = "block";
+        document.querySelector("#pinInputBox").style.display = "none";
+        pairing.onstatechange = (state) => {
+            if (state == "connected" || state == "ready") {
+                document.querySelector("#pin").innerText = pairing.pin;
+            } else {
+                document.querySelector("#pin").innerText =  "......";
+            }
+        };
+        pairing.startPairing();
+    });
+
+    // Publish or Play?
+    let stream = "1";
+    document.querySelector('#startPublisherButton').addEventListener('click', (ev) => {
+        document.querySelector("#select").style.display = "none";
+        document.querySelector("#player").style.display = "none";
+        document.querySelector("#publisher").style.display = "block";
+        addStream();
+    });
+    document.querySelector('#startPlayerButton').addEventListener('click', (ev) => {
+        document.querySelector("#select").style.display = "none";
+        document.querySelector("#player").style.display = "block";
+        document.querySelector("#publisher").style.display = "none";
+        playStream(stream);
+    });
+    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => {
+        pairing.setPeerSettings(null);
+    });
+
+
+    // Publisher
+    document.querySelector('#addStreamButton').addEventListener('click', (ev) => {
+        addStream();
+    });
+
+    // Player
+    document.querySelector('#playButton').addEventListener('click', (ev) => {
+        playStream(stream);
     });
     document.querySelector('#streamSelect').addEventListener('change', (ev) => {
         stream = document.querySelector('#streamSelect').value;
         console.log(stream);
         if (player) {
-            player?.disconnect();
-            let settings = pairing.getPeerSettings();
-            let videoEl = document.querySelector('#screen');
-            player = new PlayerConnection(settings.roomId + "." + stream, videoEl);
-            player.options.signalingKey = settings.signalingKey;
-            player.connect();
+            playStream(stream);
         }
     });
-
-
 
 }, { once: true });
