@@ -11,6 +11,7 @@ const settingsVersion = 1;
 
 class BaseConnection {
     constructor(roomId) {
+        this.signalingUrl = signalingUrl;
         this.roomId = roomId;
         this.conn = null;
         this.dataChannels = {};
@@ -21,10 +22,10 @@ class BaseConnection {
         this.options.audio = Object.assign({}, this.options.audio);
     }
     setupConnection() {
-        console.log("connecting..." + signalingUrl + " " + this.roomId);
+        console.log("connecting..." + this.signalingUrl + " " + this.roomId);
         this.updateStaet("connecting");
 
-        let conn = this.conn = Ayame.connection(signalingUrl, this.roomId, this.options, debugLog);
+        let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, debugLog);
         conn.on('open', async (e) => {
             console.log('open', e, this.dataChannels);
             for (let c of Object.keys(this.dataChannels)) {
@@ -175,6 +176,8 @@ class MediaConnection extends BaseConnection {
         this.options.audio.direction = 'sendonly';
         this.mediaStream = mediaStream;
         this.mouseSoc = mouseSoc;
+        this.reconnectWaitMs = 3000;
+        this.displaySurface = mediaStream.getVideoTracks()[0]?.getSettings().displaySurface || 'monitor';
     }
     async connect() {
         if (this.conn) {
@@ -184,10 +187,12 @@ class MediaConnection extends BaseConnection {
         this.dataChannels['controlEvent'] = {
             onmessage: (ev) => {
                 let msg = JSON.parse(ev.data);
-                if (this.mouseSoc?.readyState == 1 && msg.type == 'click' || msg.type == 'mouseupdate') {
-                    this.mouseSoc.send(ev.data);
-                } else {
-                    console.log("TODO:", msg);
+                if (this.displaySurface == 'monitor') {
+                    if (this.mouseSoc?.readyState == 1 && msg.type == 'mouse') {
+                        this.mouseSoc.send(ev.data);
+                    } else {
+                        console.log("TODO:", msg);
+                    }
                 }
             }
         };
@@ -197,7 +202,7 @@ class MediaConnection extends BaseConnection {
             console.log(e, this.state);
             this.conn = null;
             if (this.state == "connected" || this.state == "ready") {
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, this.reconnectWaitMs));
                 this.connect();
             } else {
                 this.disconnect();
@@ -238,11 +243,10 @@ class PlayerConnection extends BaseConnection {
         });
         await conn.connect(this.mediaStream, null);
     }
-    sendMouseEvent(type, x, y, button) {
-        this.sendData('controlEvent', JSON.stringify({ type: type, x: x, y: y, button: button }));
+    sendMouseEvent(action, x, y, button) {
+        this.sendData('controlEvent', JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
     }
 }
-
 
 class StreamManager {
     constructor(settings, onupdate) {
@@ -294,7 +298,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     updateButtonState();
     pairing.onsettingsupdate = updateButtonState;
 
-    let addStream = async () => {
+    let addStream = async (camera = false) => {
         let settings = pairing.getPeerSettings();
         if (settings) {
             manager = manager || new StreamManager(settings, () => {
@@ -306,8 +310,14 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 });
 
             });
-            let mediaStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }); // mediaDevices.getUserMedia()
+            let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
             manager.addStream(mediaStream, mouseSoc);
+        }
+    };
+    let connectMouse = () => {
+        let mouseSocketUrlInputEl = document.querySelector("#mouseSocketUrlInput");
+        if (mouseSoc?.readyState != 1 && mouseSocketUrlInputEl?.value) {
+            mouseSoc = new WebSocket(mouseSocketUrlInputEl.value);
         }
     };
 
@@ -369,10 +379,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#select").style.display = "none";
         document.querySelector("#player").style.display = "none";
         document.querySelector("#publisher").style.display = "block";
-        let mouseSocketUrlInputEl = document.querySelector("#mouseSocketUrlInput");
-        if (mouseSocketUrlInputEl?.value) {
-            mouseSoc = new WebSocket(mouseSocketUrlInputEl.value);
-        }
+        connectMouse();
         addStream();
     });
     document.querySelector('#startPlayerButton').addEventListener('click', (ev) => {
@@ -381,23 +388,22 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#publisher").style.display = "none";
         playStream(stream);
     });
-    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => {
-        pairing.setPeerSettings(null);
-    });
-
+    (async () => {
+        if ((await navigator.mediaDevices.enumerateDevices()).length == 0) {
+            console.log("no devices");
+            document.querySelector('#startPublisherButton').style.display = "none";
+        }
+    })();
 
     // Publisher
-    document.querySelector('#addStreamButton').addEventListener('click', (ev) => {
-        addStream();
-    });
+    document.querySelector('#addScreenStreamButton')?.addEventListener('click', (ev) => addStream(false));
+    document.querySelector('#addCameraStreamButton')?.addEventListener('click', (ev) => addStream(true));
+    document.querySelector('#connectMouseButton')?.addEventListener('click', (ev) => connectMouse());
 
     // Player
-    document.querySelector('#playButton').addEventListener('click', (ev) => {
-        playStream(stream);
-    });
+    document.querySelector('#playButton').addEventListener('click', (ev) => playStream(stream));
     document.querySelector('#streamSelect').addEventListener('change', (ev) => {
         stream = document.querySelector('#streamSelect').value;
-        console.log(stream);
         if (player) {
             playStream(stream);
         }
