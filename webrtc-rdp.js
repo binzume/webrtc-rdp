@@ -178,6 +178,7 @@ class MediaConnection extends BaseConnection {
         this.mouseSoc = mouseSoc;
         this.reconnectWaitMs = 3000;
         this.displaySurface = mediaStream.getVideoTracks()[0]?.getSettings().displaySurface || 'monitor';
+        this.name = mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
     }
     async connect() {
         if (this.conn) {
@@ -306,7 +307,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 el.innerText = "";
                 manager.mediaConnections.forEach((c, i) => {
                     // TODO: add disconnect/remove button.
-                    el.innerText += "stream" + (i + 1) + ":" + c.mediaStream.id + "\n";
+                    el.innerText += "stream" + (i + 1) + ":" + c.name + "\n";
                 });
 
             });
