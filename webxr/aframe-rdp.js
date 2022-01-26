@@ -128,11 +128,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		let dragging = false;
 		let dragTimer = null;
-		screenEl.addEventListener('mouseenter', (ev) => {
-		});
-		screenEl.addEventListener('mouseleave', (ev) => {
-			//			clearTimeout(dragTimer);
-		});
 		screenEl.addEventListener('mousedown', (ev) => {
 			dragTimer = setTimeout(() => {
 				dragging = true;
