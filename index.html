@@ -29,18 +29,15 @@
             </div>
             Visit this page on peer device, and generate PIN.
         </div>
-
         <a href="https://github.com/binzume/webrtc-rdp/blob/master/README.md">README.md</a>
-
     </div>
-
 
     <div id="publishOrPlay" style="display:none;text-align: center">
 
         <div id="select" style="margin: 50pt 0">
-            <button id="startPublisherButton" style="width:30%;height:80pt">Publush (Share My Desktop)</button>
-            <button id="startPlayerButton" style="width:30%;height:80pt">Play (Connect to Remote Desktop)</button><br />
-            or <button id="clearSettingsButton">Clear Setting</button> to re-pairing.
+            <button id="startPublisherButton" style="width:30%;height:80pt">Cast My Desktop</button>
+            <button id="startPlayerButton" style="width:30%;height:80pt">Connect to Remote Desktop</button><br />
+            or <button id="clearSettingsButton">Reset Settings</button> to connect to another device.
         </div>
 
         <div id="player" style="display:none">
@@ -60,6 +57,11 @@
             <button id="addScreenStreamButton">Add Screen Stream</button>
             <button id="addCameraStreamButton">Add Camera Stream</button>
             <div id="streams"></div>
+            <div style="display:none;width: 300pt;border: 1px solid #ccc; margin:10pt auto">
+                Input proxy: <input id="inputProxyUrl" value="" />
+                <button id="connectInputButton">Connect</button> <br />
+                If you want to cntrol mouse, set inputproxy url.
+            </div>
         </div>
     </div>
 

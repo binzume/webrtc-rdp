@@ -2,15 +2,17 @@
 
 // Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
-const useSignalingKey = location.host.includes("binzume.");
-const signalingKey = useSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
-const roomIdPrefix = useSignalingKey ? "binzume@rdp-room-" : "binzume-rdp-pin-";
-const roomIdPinPrefix = useSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
-const debugLog = true;
+const signalingKey = location.host.includes("binzume.") ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
+const roomIdPrefix = signalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
+const roomIdPinPrefix = signalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
 const settingsVersion = 1;
 
 class BaseConnection {
-    constructor(roomId) {
+    /**
+     * @param {string} signalingUrl 
+     * @param {string} roomId 
+     */
+    constructor(signalingUrl, roomId) {
         this.signalingUrl = signalingUrl;
         this.roomId = roomId;
         this.conn = null;
@@ -25,7 +27,7 @@ class BaseConnection {
         console.log("connecting..." + this.signalingUrl + " " + this.roomId);
         this.updateStaet("connecting");
 
-        let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, debugLog);
+        let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, true);
         conn.on('open', async (e) => {
             console.log('open', e, this.dataChannels);
             for (let c of Object.keys(this.dataChannels)) {
@@ -78,8 +80,11 @@ class BaseConnection {
 }
 
 class PairingManager extends BaseConnection {
-    constructor() {
-        super(null);
+    /**
+     * @param {string} signalingUrl 
+     */
+    constructor(signalingUrl) {
+        super(signalingUrl, null);
         this.pinLength = 6;
         this.pin = null;
         this.onsettingsupdate = null;
@@ -169,16 +174,21 @@ class PairingManager extends BaseConnection {
     }
 }
 
-class MediaConnection extends BaseConnection {
-    constructor(roomId, mediaStream, mouseSoc = null) {
-        super(roomId);
+class PublisherConnection extends BaseConnection {
+    /**
+     * @param {string} signalingUrl 
+     * @param {string} roomId 
+     * @param {MediaStream} mediaStream 
+     * @param {WebSocket} inputSoc 
+     */
+    constructor(signalingUrl, roomId, mediaStream, inputSoc = null) {
+        super(signalingUrl, roomId);
         this.options.video.direction = 'sendonly';
         this.options.audio.direction = 'sendonly';
         this.mediaStream = mediaStream;
-        this.mouseSoc = mouseSoc;
+        this.inputSoc = inputSoc;
         this.reconnectWaitMs = 3000;
         this.displaySurface = mediaStream.getVideoTracks()[0]?.getSettings().displaySurface || 'monitor';
-        this.name = mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
     }
     async connect() {
         if (this.conn) {
@@ -189,8 +199,8 @@ class MediaConnection extends BaseConnection {
             onmessage: (ev) => {
                 let msg = JSON.parse(ev.data);
                 if (this.displaySurface == 'monitor') {
-                    if (this.mouseSoc?.readyState == 1 && msg.type == 'mouse') {
-                        this.mouseSoc.send(ev.data);
+                    if (this.inputSoc?.readyState == 1 && (msg.type == 'mouse' || msg.type == 'key')) {
+                        this.inputSoc.send(ev.data);
                     } else {
                         console.log("TODO:", msg);
                     }
@@ -214,8 +224,13 @@ class MediaConnection extends BaseConnection {
 }
 
 class PlayerConnection extends BaseConnection {
-    constructor(roomId, videoEl) {
-        super(roomId);
+    /**
+     * @param {string} signalingUrl 
+     * @param {string} roomId 
+     * @param {HTMLVideoElement} videoEl 
+     */
+    constructor(signalingUrl, roomId, videoEl) {
+        super(signalingUrl, roomId);
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
@@ -249,33 +264,50 @@ class PlayerConnection extends BaseConnection {
     }
 }
 
-class StreamManager {
+class ConnectionManager {
     constructor(settings, onupdate) {
         this.settings = settings;
+        /**
+         * @type {{conn:PublisherConnection, name: string, id:number}[]}
+         */
         this.mediaConnections = [];
         this.onupdate = onupdate;
     }
 
-    addStream(mediaStream, mouseSoc = null) {
-        let roomId = this.settings.roomId + "." + (this.mediaConnections.length + 1);
-        let conn = new MediaConnection(roomId, mediaStream, mouseSoc);
+    addStream(mediaStream, inputSoc = null) {
+        let id = this._genId();
+        let name = mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
+        let conn = new PublisherConnection(signalingUrl, this.settings.roomId + "." + id, mediaStream, inputSoc);
+        this.mediaConnections.push({ conn: conn, id: id, name: name });
         conn.options.signalingKey = this.settings.signalingKey;
-        this.mediaConnections.push(conn);
         conn.connect();
         this.update();
     }
+    removeStream(id) {
+        let i = this.mediaConnections.findIndex(c => c.id == id);
+        if (i >= 0) {
+            this.mediaConnections[index].conn.disconnect();
+            this.mediaConnections.splice(index, 1);
+        }
+        this.update();
+    }
+    _genId() {
+        let n = 1;
+        while (this.mediaConnections.some(c => c.id == n)) n++;
+        return n;
+    }
     connectAll() {
-        this.mediaConnections.forEach((c) => c.connect());
+        this.mediaConnections.forEach((c) => c.conn.connect());
         this.update();
     }
     disconnectAll() {
-        this.mediaConnections.forEach((c) => c.disconnect());
+        this.mediaConnections.forEach((c) => c.conn.disconnect());
         this.update();
     }
     update() {
         this.onupdate && this.onupdate();
     }
-    dispose() {
+    clear() {
         this.disconnectAll();
         this.mediaConnections = [];
     }
@@ -284,9 +316,18 @@ class StreamManager {
 
 window.addEventListener('DOMContentLoaded', (ev) => {
     let pairing = new PairingManager();
+    /**
+     * @type {ConnectionManager}
+     */
     let manager = null;
+    /**
+     * @type {PlayerConnection}
+     */
     let player = null;
-    let mouseSoc = null;
+    /**
+     * @type {WebSocket}
+     */
+    let inputSoc = null;
 
     let updateButtonState = () => {
         let settings = pairing.getPeerSettings();
@@ -300,28 +341,24 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     pairing.onsettingsupdate = updateButtonState;
 
     let addStream = async (camera = false) => {
-        let settings = pairing.getPeerSettings();
-        if (settings) {
-            manager = manager || new StreamManager(settings, () => {
-                let el = document.querySelector('#streams');
-                el.innerText = "";
-                manager.mediaConnections.forEach((c, i) => {
-                    // TODO: add disconnect/remove button.
-                    el.innerText += "stream" + (i + 1) + ":" + c.name + "\n";
-                });
-
-            });
-            let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
-            manager.addStream(mediaStream, mouseSoc);
-        }
+        let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
+        manager.addStream(mediaStream, inputSoc);
     };
-    let connectMouse = () => {
-        let mouseSocketUrlInputEl = document.querySelector("#mouseSocketUrlInput");
-        if (mouseSoc?.readyState != 1 && mouseSocketUrlInputEl?.value) {
-            mouseSoc = new WebSocket(mouseSocketUrlInputEl.value);
+    let connectInputProxy = () => {
+        inputSoc?.close();
+        /**
+         * @type {HTMLInputElement}
+         */
+        let inputProxyUrlEl = document.querySelector("#inputProxyUrl");
+        if (inputProxyUrlEl?.value) {
+            inputSoc = new WebSocket(inputProxyUrlEl.value);
+            manager.mediaConnections.forEach((c) => c.conn.inputSoc = inputSoc);
         }
     };
 
+    /**
+     * @type {HTMLVideoElement}
+     */
     let videoEl = document.querySelector('#screen');
     let playStream = (n) => {
         player?.disconnect();
@@ -329,7 +366,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         videoEl.style.display = "none";
         document.querySelector('#connectingBox').style.display = "block";
         if (settings) {
-            player = new PlayerConnection(settings.roomId + "." + n, videoEl);
+            player = new PlayerConnection(signalingUrl, settings.roomId + "." + n, videoEl);
             player.onstatechange = (state) => {
                 if (state == "connected") {
                     videoEl.style.display = "block";
@@ -340,14 +377,17 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             player.connect();
         }
     };
-    videoEl.addEventListener('click', (ev) => {
+    let onclick = (ev) => {
         if (player?.state == "connected") {
             let rect = videoEl.getBoundingClientRect();
             let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
             let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
             player.sendMouseEvent('click', (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, (ev.clientY - rect.top - (rect.height - vh) / 2) / vh, ev.button);
+            ev.preventDefault();
         }
-    });
+    };
+    videoEl.addEventListener('click', onclick);
+    videoEl.addEventListener('auxclick', onclick);
 
     // Pairing
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
@@ -380,7 +420,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#select").style.display = "none";
         document.querySelector("#player").style.display = "none";
         document.querySelector("#publisher").style.display = "block";
-        connectMouse();
+        manager = new ConnectionManager(pairing.getPeerSettings(), () => {
+            let el = document.querySelector('#streams');
+            el.innerText = "";
+            manager.mediaConnections.forEach((c, i) => {
+                // TODO: add disconnect/remove button.
+                el.innerText += "stream" + c.id + ":" + c.name + "\n";
+            });
+        });
+        connectInputProxy();
         addStream();
     });
     document.querySelector('#startPlayerButton').addEventListener('click', (ev) => {
@@ -399,7 +447,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     // Publisher
     document.querySelector('#addScreenStreamButton')?.addEventListener('click', (ev) => addStream(false));
     document.querySelector('#addCameraStreamButton')?.addEventListener('click', (ev) => addStream(true));
-    document.querySelector('#connectMouseButton')?.addEventListener('click', (ev) => connectMouse());
+    document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
 
     // Player
     document.querySelector('#playButton').addEventListener('click', (ev) => playStream(stream));
