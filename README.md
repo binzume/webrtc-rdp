@@ -8,8 +8,8 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 1. https://binzume.github.io/webrtc-rdp/ にアクセスします
 2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
-3. Publish(スクリーンをシェア) するか Play(シェアされたスクリーンに接続) するか選択してください
-4. Publishする場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
+3. デスクトップを配信(Cast My Desktop) するか リモートデスクトップに接続 (Connect to Remote Desktop) するか選択してください
+4. する場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
 5. Play時に `WebXR` リンクから VR モードに入れます (Oculus Quest用)
 
 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
@@ -17,7 +17,13 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 ## Mouse/Keyboard
 
 マウスやキーボードの操作はブラウザからはできないので，ワイヤレスキーボード等の別の手段を用意してください．
-(ホスト側でマウスやキーボードをコントロールするプログラムを起動しておけば操作できるようにする予定です)
+
+ブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動してください(キーボードはそのうち対応します)．
+以下のような構成です．
+
+```
+クライアントブラウザ → (WebRTC P2P DataChannel) → ホストブラウザ → (WebSocket) → inputproxy → マウス/キーボード
+```
 
 ## WebRTC
 
@@ -40,7 +46,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 ## TODO
 
 - 見た目をまともにする
-- マウス＆キー入力をデータチャネルに乗せる＆PC上でデーモンとして動かす
+- WebXR時にレンダリング面積に合わせて元のvideo解像度を変える
 
 ## License
 
