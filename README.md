@@ -1,6 +1,8 @@
-# WebRTC + WebXR RDP Demo
+# WebRTC + WebXR RDP
 
-WebRTCとWebXRでPCのデスクトップをWebVR内で表示するためのデモ．
+WebRTCとWebXRを使ってブラウザだけでPCのデスクトップをWebVR内に表示するものです．(WebXRではない通常の表示もできます)
+
+最近のChromeやEdgeで動くはずです．
 
 Demo URL: https://binzume.github.io/webrtc-rdp/
 
