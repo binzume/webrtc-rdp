@@ -91,7 +91,8 @@ class PairingManager extends BaseConnection {
         this.userAgent = navigator.userAgent;
         this.settingsKey = 'webrtc-rdp-settings';
         this.options.signalingKey = signalingKey;
-        // TODO pinTimeoutSec = 3600;
+        this.pinTimeoutSec = 3600;
+        this.pinTimer = null;
     }
 
     validatePin(pin) {
@@ -145,6 +146,8 @@ class PairingManager extends BaseConnection {
     }
 
     async connect() {
+        clearTimeout(this.pinTimer);
+        this.pinTimer = setTimeout(() => this.disconnect(), this.pinTimeoutSec * 1000);
         this.roomId = roomIdPinPrefix + this.pin;
         await this.setupConnection().connect(null);
     }
@@ -284,9 +287,10 @@ class ConnectionManager {
         this.update();
     }
     removeStream(id) {
-        let i = this.mediaConnections.findIndex(c => c.id == id);
-        if (i >= 0) {
+        let index = this.mediaConnections.findIndex(c => c.id == id);
+        if (index >= 0) {
             this.mediaConnections[index].conn.disconnect();
+            this.mediaConnections[index].conn.mediaStream.getTracks().forEach(t => t.stop());
             this.mediaConnections.splice(index, 1);
         }
         this.update();
@@ -315,7 +319,7 @@ class ConnectionManager {
 
 
 window.addEventListener('DOMContentLoaded', (ev) => {
-    let pairing = new PairingManager();
+    let pairing = new PairingManager(signalingUrl);
     /**
      * @type {ConnectionManager}
      */
@@ -377,17 +381,42 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             player.connect();
         }
     };
-    let onclick = (ev) => {
+    let dragging = false;
+    let dragTimer = null;
+    let sendMouse = (action, ev) => {
         if (player?.state == "connected") {
             let rect = videoEl.getBoundingClientRect();
             let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
             let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
-            player.sendMouseEvent('click', (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, (ev.clientY - rect.top - (rect.height - vh) / 2) / vh, ev.button);
+            let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
+            if (action != 'mouseup' && (x > 1 || x < 0 || y > 1 || y < 0)) action = "move";
+            if (action == 'click' && dragging) action = "mouseup";
+            player.sendMouseEvent(action, x, y, ev.button);
             ev.preventDefault();
         }
     };
-    videoEl.addEventListener('click', onclick);
-    videoEl.addEventListener('auxclick', onclick);
+    videoEl.addEventListener('click', (ev) => sendMouse('click', ev));
+    videoEl.addEventListener('auxclick', (ev) => sendMouse('click', ev));
+    videoEl.addEventListener('pointerdown', (ev) => {
+        videoEl.setPointerCapture(ev.pointerId);
+        dragTimer = setTimeout(() => {
+            dragging = true;
+            sendMouse('mousedown', ev);
+        }, 200);
+    });
+    videoEl.addEventListener('pointermove', (ev) => dragging && sendMouse('move', ev));
+    videoEl.addEventListener('pointerup', (ev) => {
+        videoEl.releasePointerCapture(ev.pointerId);
+        clearTimeout(dragTimer);
+        console.log('pointerup', dragging);
+        if (dragging) {
+            dragging = false;
+            sendMouse('mouseup', ev);
+            let cancelClick = ev => ev.stopPropagation();
+            window.addEventListener('click', cancelClick, true);
+            setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
+        }
+    });
 
     // Pairing
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
@@ -424,8 +453,13 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             let el = document.querySelector('#streams');
             el.innerText = "";
             manager.mediaConnections.forEach((c, i) => {
-                // TODO: add disconnect/remove button.
-                el.innerText += "stream" + c.id + ":" + c.name + "\n";
+                let li = document.createElement('li');
+                let removeButton = document.createElement("button");
+                removeButton.innerText = "x";
+                removeButton.addEventListener('click', (ev) => manager.removeStream(c.id));
+                li.appendChild(document.createTextNode("stream" + c.id + ":" + c.name));
+                li.appendChild(removeButton);
+                el.appendChild(li);
             });
         });
         connectInputProxy();
@@ -437,6 +471,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#publisher").style.display = "none";
         playStream(stream);
     });
+    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => pairing.setPeerSettings(null));
     (async () => {
         if ((await navigator.mediaDevices.enumerateDevices()).length == 0) {
             console.log("no devices");
