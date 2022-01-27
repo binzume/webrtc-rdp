@@ -187,9 +187,17 @@ AFRAME.registerComponent('webrtc-rdp', {
 	connect() {
 		this.disconnect();
 		let settings = { signalingKey: null, roomId: this.data.roomId };
-		if (this.data.settingName != "") {
+		if (this.data.settingName) {
 			let s = localStorage.getItem(this.data.settingName);
-			settings = s ? JSON.parse(s) : settings;
+			settings = null;
+			if (s) {
+				try { settings = JSON.parse(s); } catch { }
+			}
+			if (!settings || settings.version != 1) {
+				this.el.sceneEl.exitVR();
+				window.open("https://binzume.github.io/webrtc-rdp/", '_blank');
+				return;
+			}
 		}
 		let roomId = settings.roomId + "." + this.roomIdSuffix;
 
