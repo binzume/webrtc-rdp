@@ -113,6 +113,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		signalingUrl: { default: "wss://ayame-labo.shiguredo.jp/signaling" },
 		settingName: { default: "" },
 		roomId: { default: "" },
+		settingUrl: { default: "/webrtc-rdp/" },
 		loadingSrc: { default: "#rdp-loading" },
 		maxWidth: { default: 12 },
 		maxHeight: { default: 8 },
@@ -186,16 +187,18 @@ AFRAME.registerComponent('webrtc-rdp', {
 	},
 	connect() {
 		this.disconnect();
-		let settings = { signalingKey: null, roomId: this.data.roomId };
-		if (this.data.settingName) {
-			let s = localStorage.getItem(this.data.settingName);
+		this._updateScreen(this.data.loadingSrc, false);
+		let data = this.data;
+		let settings = { signalingKey: null, roomId: data.roomId };
+		if (data.settingName) {
+			let s = localStorage.getItem(data.settingName);
 			settings = null;
 			if (s) {
 				try { settings = JSON.parse(s); } catch { }
 			}
 			if (!settings || settings.version != 1) {
 				this.el.sceneEl.exitVR();
-				window.open("https://binzume.github.io/webrtc-rdp/", '_blank');
+				window.open(data.settingUrl, '_blank');
 				return;
 			}
 		}
@@ -222,13 +225,13 @@ AFRAME.registerComponent('webrtc-rdp', {
 		});
 
 		// replace
-		var parent = (this.videoEl || document.querySelector(this.data.loadingSrc)).parentNode;
+		var parent = (this.videoEl || document.querySelector(data.loadingSrc)).parentNode;
 		if (this.videoEl) this.videoEl.parentNode.removeChild(this.videoEl);
 		parent.appendChild(videoEl);
 		this.videoEl = videoEl;
 
 		// connect
-		this.playerConn = new PlayerConnection(this.data.signalingUrl, roomId, videoEl);
+		this.playerConn = new PlayerConnection(data.signalingUrl, roomId, videoEl);
 		this.playerConn.options.signalingKey = settings.signalingKey;
 		this.playerConn.connect();
 	},
@@ -259,8 +262,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 	},
 	_updateScreen(src, transparent) {
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
-		clearTimeout(this.loadingTimer);
-		this.loadingTimer = null;
 		this.screenEl.setAttribute('material', { shader: "flat", src: src, transparent: transparent });
 	},
 	_byName(name) {
