@@ -1,6 +1,9 @@
 # WebRTC + WebXR RDP
 
-WebRTCとWebXRを使ってブラウザだけでPCのデスクトップをWebVR内に表示するものです．(WebXRではない通常の表示もできます)
+WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップです．(WebXRではない通常の表示もできます)
+
+![Screenshot](screenshot-xr.png)
+
 
 最近のChromeやEdgeで動くはずです．
 
@@ -11,8 +14,8 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 1. https://binzume.github.io/webrtc-rdp/ にアクセスします
 2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
 3. デスクトップを配信(Cast My Desktop) するか リモートデスクトップに接続 (Connect to Remote Desktop) するか選択してください
-4. する場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
-5. Play時に `WebXR` リンクから VR モードに入れます (Oculus Quest用)
+4. 配信する場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
+5. 接続後に [WebXR](https://binzume.github.io/webrtc-rdp/webxr/) リンクから VR モードに入れます (Oculus Quest用)
 
 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
 
@@ -49,6 +52,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 - 見た目をまともにする
 - WebXR時にレンダリング面積に合わせて元のvideo解像度を変える
+- ファイル共有
 
 ## License
 
