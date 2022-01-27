@@ -1,0 +1,30 @@
+body {
+	margin: 0;
+	padding: 0;
+    background-color: white;
+}
+
+
+#pairng {
+    text-align: center;
+}
+
+#pinInputBox, #pinDisplayBox {
+    width: 450pt;
+    margin: 0 auto;
+    padding: 10pt;
+    border: 2px solid #ccc;
+    border-radius: 4pt;
+}
+
+#pairng .pin {
+    font-size: 40pt;
+}
+
+#pairng .pin * {
+    font-size: 40pt;
+}
+
+#publishOrPlay {
+    text-align: center;
+}
