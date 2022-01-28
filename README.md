@@ -1,11 +1,10 @@
 # WebRTC + WebXR RDP
 
-WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップです．(WebXRではない通常の表示もできます)
+WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップです．WebXRではない通常表示も可能です．
 
 ![Screenshot](screenshot-xr.png)
 
-
-最近のChromeやEdgeで動くはずです．
+最近の Chrome や Edge で動くはずです．VRモードは Oculus Quest 2 の Oculus Browser で動作確認しています．
 
 Demo URL: https://binzume.github.io/webrtc-rdp/
 
@@ -15,7 +14,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
 3. デスクトップを配信(Cast My Desktop) するか リモートデスクトップに接続 (Connect to Remote Desktop) するか選択してください
 4. 配信する場合はデスクトップのキャプチャを許可してください．また，あとからストリームを追加できます．
-5. 接続後に [WebXR](https://binzume.github.io/webrtc-rdp/webxr/) リンクから VR モードに入れます (Oculus Quest用)
+5. 接続後に [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードに入れます (Oculus Quest用)
 
 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
 
@@ -37,9 +36,9 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 ## VR
 
+- https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp から．
+- 単体でも動きますが，[binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして読み込む前提の作りになっています
 - [A-Frame](https://aframe.io/)を使っています．
-- Oculus Quest 2 で動作確認しています
-- [binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして呼び出す前提の作りになっています
 
 ## Security
 
