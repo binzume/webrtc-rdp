@@ -28,3 +28,7 @@ body {
 #publishOrPlay {
     text-align: center;
 }
+
+#player video {
+    touch-action: none;
+}

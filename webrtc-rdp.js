@@ -417,6 +417,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
         }
     });
+    videoEl.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
     // Pairing
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
