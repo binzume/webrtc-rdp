@@ -26,7 +26,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 以下のような構成です．(キーボードは気が向けば対応します)
 
 ```
-クライアントブラウザ → (WebRTC P2P DataChannel) → ホストブラウザ → (WebSocket) → inputproxy → マウス/キーボード
+クライアントブラウザ → (WebRTC DataChannel) → ホストブラウザ → (WebSocket) → inputproxy → マウス/キーボード
 ```
 
 ## WebRTC
@@ -37,7 +37,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 ## VR
 
 - https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp から．
-- 単体でも動きますが，[binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして読み込む前提の作りになっています
+- [単体](https://binzume.github.io/webrtc-rdp/webxr/)でも動きますが，[binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして読み込む前提の作りになっています
 - [A-Frame](https://aframe.io/)を使っています．
 
 ## Security
