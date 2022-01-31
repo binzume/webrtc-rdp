@@ -439,7 +439,13 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
         }
     });
-    videoEl.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    videoEl.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        if (!dragging && ev.button === -1) {
+            // Oculus Quest B button fires contextmenu event w/o pointerdown/up.
+            sendMouse('click', { button: 2, clientX: ev.clientX, clientY: ev.clientY, preventDefault: () => { } });
+        }
+    });
 
     // Pairing
     document.querySelector('#inputPin').addEventListener('click', (ev) => {
@@ -509,6 +515,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     // Player
     document.querySelector('#playButton').addEventListener('click', (ev) => playStream(stream));
+    document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
     document.querySelector('#streamSelect').addEventListener('change', (ev) => {
         stream = document.querySelector('#streamSelect').value;
         if (player) {
