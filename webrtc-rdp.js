@@ -184,14 +184,15 @@ class PublisherConnection extends BaseConnection {
      * @param {MediaStream} mediaStream 
      * @param {WebSocket} inputSoc 
      */
-    constructor(signalingUrl, roomId, mediaStream, inputSoc = null) {
+    constructor(signalingUrl, roomId, mediaStream, inputSoc = null, isCamera = false) {
         super(signalingUrl, roomId);
         this.options.video.direction = 'sendonly';
         this.options.audio.direction = 'sendonly';
         this.mediaStream = mediaStream;
         this.inputSoc = inputSoc;
+        this.isCamera = isCamera;
         this.reconnectWaitMs = 3000;
-        this.displaySurface = mediaStream.getVideoTracks()[0]?.getSettings().displaySurface || 'monitor';
+        this.target = this._getTarget(mediaStream);
     }
     async connect() {
         if (this.conn) {
@@ -201,9 +202,10 @@ class PublisherConnection extends BaseConnection {
         this.dataChannels['controlEvent'] = {
             onmessage: (ev) => {
                 let msg = JSON.parse(ev.data);
-                if (this.displaySurface == 'monitor') {
+                if (this.target != null) {
                     if (this.inputSoc?.readyState == 1 && (msg.type == 'mouse' || msg.type == 'key')) {
-                        this.inputSoc.send(ev.data);
+                        msg.target = this.target;
+                        this.inputSoc.send(JSON.stringify(msg));
                     } else {
                         console.log("TODO:", msg);
                     }
@@ -215,7 +217,7 @@ class PublisherConnection extends BaseConnection {
         conn.on('disconnect', async (e) => {
             console.log(e, this.state);
             this.conn = null;
-            if (this.state == "connected" || this.state == "ready") {
+            if ((this.state == "connected" || this.state == "ready") && this.reconnectWaitMs >= 0) {
                 await new Promise(resolve => setTimeout(resolve, this.reconnectWaitMs));
                 this.connect();
             } else {
@@ -223,6 +225,26 @@ class PublisherConnection extends BaseConnection {
             }
         });
         await conn.connect(this.mediaStream, null);
+    }
+    _getTarget(mediaStream) {
+        let surface = mediaStream.getVideoTracks()[0]?.getSettings().displaySurface;
+        let label = mediaStream.getVideoTracks()[0]?.label;
+        if (surface == null || label == null) {
+            // TODO: Firefox
+            return this.isCamera ? null : { type: 'monitor', id: 0 };
+        }
+        if (surface == 'monitor') {
+            let m = label.match(/^screen:(\d+):\d+/);
+            if (m) {
+                return { type: surface, id: m[1] | 0 };
+            }
+        } else if (surface == 'window') {
+            let m = label.match(/^window:(\d+):\d+/);
+            if (m) {
+                return { type: surface, id: m[1] | 0 };
+            }
+        }
+        return null;
     }
 }
 
@@ -277,10 +299,10 @@ class ConnectionManager {
         this.onupdate = onupdate;
     }
 
-    addStream(mediaStream, inputSoc = null) {
+    addStream(mediaStream, inputSoc = null, isCamera = false) {
         let id = this._genId();
         let name = mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-        let conn = new PublisherConnection(signalingUrl, this.settings.roomId + "." + id, mediaStream, inputSoc);
+        let conn = new PublisherConnection(signalingUrl, this.settings.roomId + "." + id, mediaStream, inputSoc, isCamera);
         this.mediaConnections.push({ conn: conn, id: id, name: name });
         conn.options.signalingKey = this.settings.signalingKey;
         conn.connect();
@@ -346,7 +368,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     let addStream = async (camera = false) => {
         let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
-        manager.addStream(mediaStream, inputSoc);
+        manager.addStream(mediaStream, inputSoc, camera);
     };
     let connectInputProxy = () => {
         inputSoc?.close();
