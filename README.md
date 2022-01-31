@@ -1,4 +1,4 @@
-# WebRTC + WebXR RDP
+# WebRTC + WebXR Remote Desktop
 
 WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップです．WebXRではない通常表示も可能です．
 
@@ -49,10 +49,9 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 ## TODO
 
-- ウインドウ単位のキャプチャでもマウス操作をサポートする
 - WebXR時にレンダリング面積に合わせて元のvideo解像度を変える
 - UIをまともにする
-- ファイル共有機能
+- クリップボード・ファイル共有機能
 
 ## License
 
