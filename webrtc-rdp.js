@@ -436,7 +436,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             sendMouse('mouseup', ev);
             let cancelClick = ev => ev.stopPropagation();
             window.addEventListener('click', cancelClick, true);
-            setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
+            setTimeout(() => window.removeEventListener('click', cancelClick, true), 10);
         }
     });
     videoEl.addEventListener('contextmenu', (ev) => {
