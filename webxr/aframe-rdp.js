@@ -156,8 +156,13 @@ AFRAME.registerComponent('webrtc-rdp', {
 			ev.detail.intersection && this.playerConn?.sendMouseEvent("click", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
 		});
 		screenEl.addEventListener('materialtextureloaded', (ev) => {
+			/**
+			 * @type {THREE.Texture}
+			 */
 			let map = ev.detail.texture;
 			map.anisotropy = Math.min(16, this.el.sceneEl.renderer.capabilities.getMaxAnisotropy());
+			map.magFilter = THREE.LinearFilter;
+			map.minFilter = THREE.LinearFilter;
 			map.needsUpdate = true;
 		});
 
