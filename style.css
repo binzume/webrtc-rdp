@@ -32,3 +32,29 @@ body {
 #player video {
     touch-action: none;
 }
+
+#streams {
+    max-width: 400pt;
+    margin: 0 auto;
+}
+
+#streams li {
+	list-style-type: none;
+    text-align: left;
+}
+
+#streams .connectionstate {
+    margin: 0 10pt;
+}
+
+#streams .connectionstate_ready {
+    color: green;
+}
+
+#streams .connectionstate_connected {
+    color: red;
+}
+
+#streams .connectionstate_disconnected {
+    color: darkred;
+}

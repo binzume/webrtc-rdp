@@ -57,11 +57,16 @@ class BaseConnection {
         this.conn = null;
         this.dataChannels = {};
     }
+    dispose() {
+        this.disconnect();
+        this.updateStaet("disposed");
+    }
     updateStaet(s) {
         if (s != this.state) {
             console.log(this.roomId, s);
-            this.onstatechange && this.onstatechange(s);
+            let oldState = this.state;
             this.state = s;
+            this.onstatechange && this.onstatechange(s, oldState);
         }
     }
     handleDataChannel(ch) {
@@ -214,14 +219,13 @@ class PublisherConnection extends BaseConnection {
         };
 
         const conn = this.setupConnection();
-        conn.on('disconnect', async (e) => {
-            console.log(e, this.state);
+        conn.on('disconnect', (e) => {
+            console.log(e);
+            let oldState = this.state;
             this.conn = null;
-            if ((this.state == "connected" || this.state == "ready") && this.reconnectWaitMs >= 0) {
-                await new Promise(resolve => setTimeout(resolve, this.reconnectWaitMs));
-                this.connect();
-            } else {
-                this.disconnect();
+            this.disconnect();
+            if ((oldState == "connected" || oldState == "ready") && this.reconnectWaitMs >= 0) {
+                setTimeout(() => this.connect(), this.reconnectWaitMs);
             }
         });
         await conn.connect(this.mediaStream, null);
@@ -263,7 +267,7 @@ class PlayerConnection extends BaseConnection {
     }
 
     async connect() {
-        if (this.conn) {
+        if (this.conn || this.state == 'disposed') {
             return;
         }
 
@@ -293,7 +297,7 @@ class ConnectionManager {
     constructor(settings, onupdate) {
         this.settings = settings;
         /**
-         * @type {{conn:PublisherConnection, name: string, id:number}[]}
+         * @type {{conn:PublisherConnection, name: string, id:number, opaque: any}[]}
          */
         this.mediaConnections = [];
         this.onupdate = onupdate;
@@ -303,15 +307,17 @@ class ConnectionManager {
         let id = this._genId();
         let name = mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
         let conn = new PublisherConnection(signalingUrl, this.settings.roomId + "." + id, mediaStream, inputSoc, isCamera);
-        this.mediaConnections.push({ conn: conn, id: id, name: name });
         conn.options.signalingKey = this.settings.signalingKey;
         conn.connect();
         this.update();
+        let info = { conn: conn, id: id, name: name, opaque: null };
+        this.mediaConnections.push(info);
+        return info;
     }
     removeStream(id) {
         let index = this.mediaConnections.findIndex(c => c.id == id);
         if (index >= 0) {
-            this.mediaConnections[index].conn.disconnect();
+            this.mediaConnections[index].conn.dispose();
             this.mediaConnections[index].conn.mediaStream.getTracks().forEach(t => t.stop());
             this.mediaConnections.splice(index, 1);
         }
@@ -366,9 +372,31 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     updateButtonState();
     pairing.onsettingsupdate = updateButtonState;
 
+    let updateStreamInfo = (c) => {
+        let el = c.opaque;
+        el.innerText = '';
+        let removeButton = document.createElement("button");
+        removeButton.innerText = "x";
+        removeButton.addEventListener('click', (ev) => {
+            manager.removeStream(c.id);
+            el.parentNode.removeChild(el);
+        });
+        let stateEl = document.createElement("span");
+        stateEl.innerText = c.conn.state;
+        stateEl.className = 'connectionstate connectionstate_' + c.conn.state;
+        el.appendChild(document.createTextNode("stream" + c.id + " : " + c.name));
+        el.appendChild(stateEl);
+        el.appendChild(removeButton);
+    };
+
     let addStream = async (camera = false) => {
         let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
-        manager.addStream(mediaStream, inputSoc, camera);
+        let c = await manager.addStream(mediaStream, inputSoc, camera);
+        let el = document.querySelector('#streams');
+        c.opaque = document.createElement('li');
+        updateStreamInfo(c);
+        c.conn.onstatechange = () => updateStreamInfo(c);
+        el.appendChild(c.opaque);
     };
     let connectInputProxy = () => {
         inputSoc?.close();
@@ -478,19 +506,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector("#select").style.display = "none";
         document.querySelector("#player").style.display = "none";
         document.querySelector("#publisher").style.display = "block";
-        manager = new ConnectionManager(pairing.getPeerSettings(), () => {
-            let el = document.querySelector('#streams');
-            el.innerText = "";
-            manager.mediaConnections.forEach((c, i) => {
-                let li = document.createElement('li');
-                let removeButton = document.createElement("button");
-                removeButton.innerText = "x";
-                removeButton.addEventListener('click', (ev) => manager.removeStream(c.id));
-                li.appendChild(document.createTextNode("stream" + c.id + ":" + c.name));
-                li.appendChild(removeButton);
-                el.appendChild(li);
-            });
-        });
+        manager = new ConnectionManager(pairing.getPeerSettings());
         connectInputProxy();
         addStream();
     });
