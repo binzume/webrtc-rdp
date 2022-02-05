@@ -105,6 +105,9 @@ class PlayerConnection extends BaseConnection {
 	sendMouseEvent(action, x, y, button) {
 		this.sendData('controlEvent', JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
 	}
+    sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
+        this.sendData('controlEvent', JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+    }
 }
 
 
@@ -129,6 +132,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		let dragging = false;
 		let dragTimer = null;
+		screenEl.setAttribute('tabindex', 0);
 		screenEl.addEventListener('mousedown', (ev) => {
 			dragTimer = setTimeout(() => {
 				dragging = true;
@@ -154,6 +158,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		});
 		screenEl.addEventListener('click', (ev) => {
 			ev.detail.intersection && this.playerConn?.sendMouseEvent("click", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
+			screenEl.focus();
 		});
 		screenEl.addEventListener('materialtextureloaded', (ev) => {
 			/**
@@ -165,6 +170,13 @@ AFRAME.registerComponent('webrtc-rdp', {
 			map.minFilter = THREE.LinearFilter;
 			map.needsUpdate = true;
 		});
+		screenEl.addEventListener('keydown', (ev) => {
+			if (this.playerConn?.state == "connected") {
+				this.playerConn.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+				ev.preventDefault();
+			}
+		});
+		screenEl.focus();
 
 		this._byName("connectButton").addEventListener('click', ev => this.connect());
 		this._byName("roomSelect").addEventListener('change', ev => { this.roomIdSuffix = ev.detail.value; console.log("room:", ev.detail); });

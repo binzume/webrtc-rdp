@@ -23,7 +23,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 ブラウザ上からは，マウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意してください．
 
 どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動してください．
-以下のような構成です．(キーボードは気が向けば対応します)
+以下のような構成です．(キー入力は実装途中です)
 
 ```
 クライアントブラウザ → (WebRTC DataChannel) → ホストブラウザ → (WebSocket) → inputproxy → マウス/キーボード

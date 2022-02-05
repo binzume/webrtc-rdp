@@ -291,6 +291,9 @@ class PlayerConnection extends BaseConnection {
     sendMouseEvent(action, x, y, button) {
         this.sendData('controlEvent', JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
     }
+    sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
+        this.sendData('controlEvent', JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+    }
 }
 
 class ConnectionManager {
@@ -361,6 +364,23 @@ window.addEventListener('DOMContentLoaded', (ev) => {
      */
     let inputSoc = null;
 
+    /**
+     * @param {string} tag 
+     * @param {string[] | string | Element[] | any} children 
+     * @param {object | function} attrs
+     * @returns {Element}
+     */
+    let mkEl = (tag, children, attrs) => {
+        let el = document.createElement(tag);
+        children && el.append(...[children].flat(999));
+        if (typeof (attrs) == "function") {
+            attrs(el);
+        } else if (typeof (attrs) == "object") {
+            Object.assign(el, attrs);
+        }
+        return el;
+    };
+
     let updateButtonState = () => {
         let settings = pairing.getPeerSettings();
         if (settings) {
@@ -375,25 +395,23 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let updateStreamInfo = (c) => {
         let el = c.opaque;
         el.innerText = '';
-        let removeButton = document.createElement("button");
-        removeButton.innerText = "x";
-        removeButton.addEventListener('click', (ev) => {
-            manager.removeStream(c.id);
-            el.parentNode.removeChild(el);
-        });
-        let stateEl = document.createElement("span");
-        stateEl.innerText = c.conn.state;
-        stateEl.className = 'connectionstate connectionstate_' + c.conn.state;
-        el.appendChild(document.createTextNode("stream" + c.id + " : " + c.name));
-        el.appendChild(stateEl);
-        el.appendChild(removeButton);
+        el.append(
+            mkEl('span', "stream" + c.id + " : " + c.name, { className: 'streamName' }),
+            mkEl('span', c.conn.state, { className: 'connectionstate connectionstate_' + c.conn.state }),
+            mkEl('button', 'x', (btn) =>
+                btn.addEventListener('click', (ev) => {
+                    manager.removeStream(c.id);
+                    el.parentNode.removeChild(el);
+                })
+            ),
+        );
     };
 
     let addStream = async (camera = false) => {
         let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
         let c = await manager.addStream(mediaStream, inputSoc, camera);
         let el = document.querySelector('#streams');
-        c.opaque = document.createElement('li');
+        c.opaque = mkEl('li');
         updateStreamInfo(c);
         c.conn.onstatechange = () => updateStreamInfo(c);
         el.appendChild(c.opaque);
@@ -472,6 +490,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         if (!dragging && ev.button === -1) {
             // Oculus Quest B button fires contextmenu event w/o pointerdown/up.
             sendMouse('click', { button: 2, clientX: ev.clientX, clientY: ev.clientY, preventDefault: () => { } });
+        }
+    });
+    window.addEventListener('keydown', (ev) => {
+        if (player?.state == "connected") {
+            player.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+            ev.preventDefault();
         }
     });
 
