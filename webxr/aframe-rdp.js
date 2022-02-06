@@ -105,9 +105,9 @@ class PlayerConnection extends BaseConnection {
 	sendMouseEvent(action, x, y, button) {
 		this.sendData('controlEvent', JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
 	}
-    sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
-        this.sendData('controlEvent', JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
-    }
+	sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
+		this.sendData('controlEvent', JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+	}
 }
 
 
@@ -172,7 +172,21 @@ AFRAME.registerComponent('webrtc-rdp', {
 		});
 		screenEl.addEventListener('keydown', (ev) => {
 			if (this.playerConn?.state == "connected") {
-				this.playerConn.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+				let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
+				let k = ev.key;
+				if (!modkey && !ev.shiftKey && k.length == 1 && ev.getModifierState("CapsLock")) {
+					k = k.toLowerCase();
+				}
+				this.playerConn.sendKeyEvent(modkey ? 'down' : 'press', k, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+				ev.preventDefault();
+			}
+		});
+		screenEl.addEventListener('keyup', (ev) => {
+			if (this.playerConn?.state == "connected") {
+				let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
+				if (modkey) {
+					this.playerConn.sendKeyEvent('up', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+				}
 				ev.preventDefault();
 			}
 		});
