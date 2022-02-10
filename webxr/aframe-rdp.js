@@ -118,8 +118,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 		roomId: { default: "" },
 		settingUrl: { default: "/webrtc-rdp/" },
 		loadingSrc: { default: "#rdp-loading" },
-		maxWidth: { default: 12 },
-		maxHeight: { default: 8 },
+		maxWidth: { default: 8 },
+		maxHeight: { default: 6 },
 	},
 	init() {
 		// @ts-ignore
