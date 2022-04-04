@@ -1,0 +1,27 @@
+{
+  "name": "webrtc-rdp-app",
+  "version": "0.0.1",
+  "description": "WebRTC RDP application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": "https://github.com/binzume/webrtc-rdp",
+  "keywords": [
+    "WebRTC",
+    "RemoteDesktop",
+    "Electron"
+  ],
+  "author": "GitHub",
+  "license": "MIT",
+  "devDependencies": {
+    "@open-ayame/ayame-web-sdk": "^2022.1.0",
+    "electron": "^17.2.0",
+    "electron-rebuild": "^3.2.7"
+  },
+  "dependencies": {
+    "ffi-napi": "^4.0.3",
+    "ref-napi": "^3.0.3",
+    "robotjs": "^0.6.0"
+  }
+}

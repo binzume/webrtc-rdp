@@ -1,0 +1,81 @@
+body {
+    margin: 0;
+    padding: 0;
+    background-color: white;
+}
+
+
+#pairng {
+    text-align: center;
+}
+
+#pinInputBox,
+#pinDisplayBox {
+    width: 450pt;
+    margin: 0 auto;
+    padding: 10pt;
+    border: 2px solid #ccc;
+    border-radius: 4pt;
+}
+
+#pairng .pin {
+    font-size: 40pt;
+}
+
+#pairng .pin * {
+    font-size: 40pt;
+}
+
+#publishOrPlay {
+    text-align: center;
+}
+
+#player video {
+    touch-action: none;
+}
+
+.streamlist {
+    max-width: 400pt;
+    margin: 0 auto;
+}
+
+.streamlist li {
+    list-style-type: none;
+    text-align: left;
+}
+
+.streamlist .connectionstate {
+    margin: 0 10pt;
+}
+
+.streamlist .connectionstate_ready {
+    color: green;
+}
+
+.streamlist .connectionstate_connected {
+    color: red;
+}
+
+.streamlist .connectionstate_disconnected {
+    color: darkred;
+}
+
+#devices {
+    max-width: 400pt;
+    margin: 0 auto;
+}
+
+#devices>div {
+    border: solid 2px #ccc;
+    min-height: 40pt;
+    border-radius: 6pt;
+}
+
+#devices>div>span {
+    display: block;
+    border-top-left-radius: 4pt;
+    border-top-right-radius: 4pt;
+    width: 100%;
+    background-color: #abf;
+    font-weight: bold;
+}
