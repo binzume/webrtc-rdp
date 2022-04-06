@@ -6,13 +6,10 @@ var ffi = require('ffi-napi')
 var ref = require('ref-napi')
 
 const wu32 = process.platform == 'win32' && ffi.Library("user32.dll", {
-  'MessageBoxA': ["int", [ref.refType(ref.types.void), ref.types.CString, ref.types.CString, ref.types.int32]],
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
   // 'SetProcessDpiAwarenessContext': [ref.types.int32, [ref.types.int32]],
 });
-
-// wu32.MessageBoxA(ref.NULL, "Hello", "title", 0);
 
 function GetWindowRect(hWnd) {
   let rectBuf = Buffer.alloc(16);
@@ -26,8 +23,6 @@ function GetWindowRect(hWnd) {
     bottom: rectBuf.readUInt32LE(12),
   };
 }
-
-
 
 class RDPApp {
   constructor() {
@@ -119,10 +114,12 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     }
-  })
+  });
 
-  mainWindow.loadFile('index.html')
-  mainWindow.webContents.openDevTools()
+  mainWindow.loadFile('index.html');
+  if (process.argv.includes('--debug')) {
+    mainWindow.webContents.openDevTools();
+  }
 }
 
 

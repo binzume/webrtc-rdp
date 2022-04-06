@@ -4,7 +4,9 @@
   "description": "WebRTC RDP application",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "start-debug": "electron . --debug",
+    "build-win": "npx electron-builder --win --x64"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [
@@ -15,13 +17,18 @@
   "author": "GitHub",
   "license": "MIT",
   "devDependencies": {
-    "@open-ayame/ayame-web-sdk": "^2022.1.0",
     "electron": "^17.2.0",
+    "electron-builder": "^22.14.13",
     "electron-rebuild": "^3.2.7"
   },
   "dependencies": {
+    "@open-ayame/ayame-web-sdk": "^2022.1.0",
     "ffi-napi": "^4.0.3",
     "ref-napi": "^3.0.3",
     "robotjs": "^0.6.0"
+  },
+  "build": {
+    "appId": "net.binzume.webrtc-rdp",
+    "npmRebuild": false
   }
 }

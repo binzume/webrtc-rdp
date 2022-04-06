@@ -6,13 +6,48 @@ const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
 const signalingKey = location.host.includes("binzume.") ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
 const roomIdPrefix = signalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
 const roomIdPinPrefix = signalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
-const settingsVersion = 1;
 
 /** 
  * @typedef {{onmessage?: ((ev:any) => void), onopen?: ((ev:any) => void), ch?:RTCDataChannel }} DataChannelInfo
  * @typedef {{send?: ((ev:any, conn:any) => void)}} InputProxy
- * @typedef {{name?: string, roomId: string, userAgent: string, token:string, signalingKey:string}} DeviceSettings
+ * @typedef {{name?: string, roomId: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
  */
+
+class Settings {
+    static settingsKey = 'webrtc-rdp-settings';
+    static onsettingsupdate = null;
+    static settingsVersion = 1;
+
+    /**
+     * @param {DeviceSettings} deviceInfo 
+     */
+    static addPeerDevice(deviceInfo) {
+        // TODO: multiple devices
+        deviceInfo.version = this.settingsVersion;
+        localStorage.setItem(this.settingsKey, JSON.stringify(deviceInfo));
+        this.onsettingsupdate && this.onsettingsupdate(deviceInfo);
+    }
+
+    /**
+     * @returns {DeviceSettings[]}
+     */
+    static getPeerDevices() {
+        let s = localStorage.getItem(this.settingsKey);
+        return s ? [JSON.parse(s)] : [];
+    }
+
+    /**
+     * @param {DeviceSettings} deviceInfo 
+     */
+    static removePeerDevice(deviceInfo) {
+        this.clear();
+    }
+
+    static clear() {
+        localStorage.removeItem(this.settingsKey);
+        this.onsettingsupdate && this.onsettingsupdate(null);
+    }
+}
 
 class BaseConnection {
     /**
@@ -103,7 +138,6 @@ class BaseConnection {
         this.dataChannels[chLabel].ch?.send(data);
     }
 }
-
 class PairingManager extends BaseConnection {
     /**
      * @param {string} signalingUrl 
@@ -112,9 +146,7 @@ class PairingManager extends BaseConnection {
         super(signalingUrl, null);
         this.pinLength = 6;
         this.pin = null;
-        this.onsettingsupdate = null;
         this.userAgent = navigator.userAgent;
-        this.settingsKey = 'webrtc-rdp-settings';
         this.options.signalingKey = signalingKey;
         this.pinTimeoutSec = 3600;
         this.pinTimer = null;
@@ -138,7 +170,8 @@ class PairingManager extends BaseConnection {
                 console.log('ch msg', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    this.setPeerSettings({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                    this.disconnect();
                 }
             },
         };
@@ -163,7 +196,8 @@ class PairingManager extends BaseConnection {
                     let roomId = roomIdPrefix + this._generateSecret(16);
                     let token = this._generateSecret(16);
                     ev.target.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
-                    this.setPeerSettings({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+                    this.disconnect();
                 }
             },
         };
@@ -175,21 +209,6 @@ class PairingManager extends BaseConnection {
         this.pinTimer = setTimeout(() => this.disconnect(), this.pinTimeoutSec * 1000);
         this.roomId = roomIdPinPrefix + this.pin;
         await this.setupConnection().connect(null);
-    }
-
-    setPeerSettings(settings) {
-        if (!settings) {
-            localStorage.removeItem(this.settingsKey);
-        } else {
-            settings.version = settingsVersion;
-            localStorage.setItem(this.settingsKey, JSON.stringify(settings));
-        }
-        this.onsettingsupdate && this.onsettingsupdate(settings);
-    }
-
-    getPeerSettings() {
-        let s = localStorage.getItem(this.settingsKey);
-        return s ? JSON.parse(s) : null;
     }
 
     _generatePin() {
@@ -382,15 +401,10 @@ class ConnectionManager {
 
 
 window.addEventListener('DOMContentLoaded', (ev) => {
-    let pairing = new PairingManager(signalingUrl);
-    /**
-     * @type {ConnectionManager}
-     */
-    // let manager = null;
-    /**
-     * @type {PlayerConnection}
-     */
-    let player = null;
+    if (globalThis.RDP) {
+        document.body.classList.add('standalone');
+    }
+
     /**
      * @type {WebSocket}
      */
@@ -417,12 +431,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         return el;
     };
 
+    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => confirm('CLear all settiungs?') && Settings.clear());
 
     let addDefaultStreams = (device) => {
         if (!globalThis.RDP) {
             return;
         }
-        document.getElementById("select").style.display = "none";
         (async () => {
             console.log("Using window.RDP");
             let streams = await RDP.getDisplayStreams(['screen']); // 'window'
@@ -449,9 +463,9 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                             if (msg.type == 'mouse') {
                                 let now = Date.now();
                                 if (now - lastMouseMoveTime < 40 && msg.action == 'move') {
-                                  return;
+                                    return;
                                 }
-                                lastMouseMoveTime = now;                            
+                                lastMouseMoveTime = now;
                                 await RDP.sendMouse({ target: s, action: msg.action, button: msg.button, x: msg.x, y: msg.y });
                             } else if (msg.type == 'key') {
                                 let modifiers = [];
@@ -500,16 +514,22 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             let listEl = mkEl('ul', [], { className: 'streamlist' });
             let removeButtonEl = mkEl('button', 'x', (el) =>
                 el.addEventListener('click', (ev) => {
-                    confirm(`Remove ${name} ?`) && pairing.setPeerSettings(null);
+                    confirm(`Remove ${name} ?`) && Settings.removePeerDevice(d);
                 })
             );
             let el = mkEl('div', [mkEl('span', [name, removeButtonEl], { title: d.userAgent }), listEl]);
             if (!globalThis.RDP) {
                 el.append(
-                    mkEl('button', 'Add Screen Stream', (el) =>
+                    mkEl('button', 'Add Desktop', (el) =>
                         el.addEventListener('click', (ev) => addStream(false))),
-                    mkEl('button', 'Add Camera Stream', (el) =>
+                    mkEl('button', 'Add Camera', (el) =>
                         el.addEventListener('click', (ev) => addStream(true))),
+                    mkEl('button', 'Player', (el) =>
+                        el.addEventListener('click', (ev) => {
+                            document.body.classList.add('player');
+                            currentDevice = d;
+                            playStream();
+                        })),
                 );
             }
             parentEl.append(el);
@@ -521,17 +541,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         }
     };
 
-    let updateButtonState = (settings) => {
-        if (settings) {
-            pairing.disconnect();
-        }
-        document.getElementById('pairng').style.display = settings ? "none" : "block";
-        document.getElementById('publishOrPlay').style.display = settings ? "block" : "none";
-        updateDeviceList(settings ? [settings] : []); // TODO: multiple devices
+    let onSettingUpdated = (settings) => {
+        document.getElementById('pairng').style.display = settings[0] ? "none" : "block";
+        document.getElementById('publishOrPlay').style.display = settings[0] ? "block" : "none";
+        updateDeviceList(settings);
     };
-    updateButtonState(pairing.getPeerSettings());
-    pairing.onsettingsupdate = updateButtonState;
+    onSettingUpdated(Settings.getPeerDevices());
+    Settings.onsettingsupdate = onSettingUpdated;
 
+    // Publisher
     let updateStreamInfo = (manager, c) => {
         let el = c.opaque;
         el.innerText = '';
@@ -566,24 +584,30 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         c.conn.onstatechange = () => updateStreamInfo(device.manager, c);
         device.listEl.appendChild(c.opaque);
     };
+    document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
 
 
+    // Player
+    /** @type {PlayerConnection} */
+    let player = null;
     /** @type {HTMLVideoElement} */
     let videoEl = document.querySelector('#screen');
-    let playStream = (n) => {
+    let currentStreamId = "1";
+    /** @type {DeviceSettings} */
+    let currentDevice = null;
+    let playStream = () => {
         player?.disconnect();
-        let settings = pairing.getPeerSettings();
         videoEl.style.display = "none";
         document.getElementById('connectingBox').style.display = "block";
-        if (settings) {
-            player = new PlayerConnection(signalingUrl, settings.roomId + "." + n, videoEl);
+        if (currentDevice) {
+            player = new PlayerConnection(signalingUrl, currentDevice.roomId + "." + currentStreamId, videoEl);
             player.onstatechange = (state) => {
                 if (state == "connected") {
                     videoEl.style.display = "block";
                     document.getElementById('connectingBox').style.display = "none";
                 }
             };
-            player.options.signalingKey = settings.signalingKey;
+            player.options.signalingKey = currentDevice.signalingKey;
             player.connect();
         }
     };
@@ -636,17 +660,27 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             ev.preventDefault();
         }
     });
+    document.querySelector('#playButton').addEventListener('click', (ev) => playStream());
+    document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
+    document.querySelector('#streamSelect').addEventListener('change', (ev) => {
+        currentStreamId = /** @type {HTMLInputElement} */(document.querySelector('#streamSelect')).value;
+        if (player) {
+            playStream();
+        }
+    });
+
 
     // Pairing
+    let pairing = new PairingManager(signalingUrl);
     document.getElementById('inputPin').addEventListener('click', (ev) => {
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
     });
     document.getElementById('sendPinButton').addEventListener('click', (ev) => {
-        let pin = document.getElementById("pinInput").value.trim();
+        let pin = /** @type {HTMLInputElement} */(document.getElementById("pinInput")).value.trim();
         if (pairing.validatePin(pin)) {
-            pairing.sendPin(pin);
             document.getElementById("pinInputBox").style.display = "none";
+            pairing.sendPin(pin);
         }
     });
     document.querySelector('#generatePin').addEventListener('click', async (ev) => {
@@ -662,42 +696,5 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         pairing.startPairing();
     });
 
-    // Publish or Play?
-    let stream = "1";
-    document.querySelector('#startPublisherButton').addEventListener('click', (ev) => {
-        document.getElementById("select").style.display = "none";
-        document.getElementById("player").style.display = "none";
-        document.getElementById("publisher").style.display = "block";
-        // manager = new ConnectionManager(pairing.getPeerSettings());
-        connectInputProxy();
-
-        addStream();
-    });
-    document.querySelector('#startPlayerButton').addEventListener('click', (ev) => {
-        document.getElementById("select").style.display = "none";
-        document.getElementById("player").style.display = "block";
-        document.getElementById("publisher").style.display = "none";
-        playStream(stream);
-    });
-    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => pairing.setPeerSettings(null));
-    (async () => {
-        if ((await navigator.mediaDevices.enumerateDevices()).length == 0) {
-            console.log("no devices");
-            document.getElementById('startPublisherButton').style.display = "none";
-        }
-    })();
-
-    // Publisher
-    document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
-
-    // Player
-    document.querySelector('#playButton').addEventListener('click', (ev) => playStream(stream));
-    document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
-    document.querySelector('#streamSelect').addEventListener('change', (ev) => {
-        stream = document.querySelector('#streamSelect').value;
-        if (player) {
-            playStream(stream);
-        }
-    });
 
 }, { once: true });
