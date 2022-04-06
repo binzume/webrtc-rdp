@@ -443,10 +443,16 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                             }
                         }
                     });
+                    let lastMouseMoveTime = 0;
                     let c = await device.manager.addStream(mediaStream, {
                         async send(msg, conn) {
                             if (msg.type == 'mouse') {
-                                await RDP.sendMouse({ target: s, action: msg.action, x: msg.x, y: msg.y });
+                                let now = Date.now();
+                                if (now - lastMouseMoveTime < 40 && msg.action == 'move') {
+                                  return;
+                                }
+                                lastMouseMoveTime = now;                            
+                                await RDP.sendMouse({ target: s, action: msg.action, button: msg.button, x: msg.x, y: msg.y });
                             } else if (msg.type == 'key') {
                                 let modifiers = [];
                                 msg.ctrl && modifiers.push('control');
