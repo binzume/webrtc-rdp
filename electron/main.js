@@ -5,7 +5,7 @@ const robot = require("robotjs");
 var ffi = require('ffi-napi')
 var ref = require('ref-napi')
 
-const wu32 = ffi.Library("user32.dll", {
+const wu32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'MessageBoxA': ["int", [ref.refType(ref.types.void), ref.types.CString, ref.types.CString, ref.types.int32]],
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
@@ -35,6 +35,15 @@ class RDPApp {
     this.displays = {};
     /** @type {Record<string, Electron.DesktopCapturerSource[]>} */
     this.sources = [];
+    this.specialKeys = {
+      Control: 'control', Shift: 'shift', ALT: 'alt', Meta: 'command', Insert: 'insert',
+      Enter: 'enter', Backspace: 'backspace', Tab: 'tab', Escape: 'escape', Delete: 'delete',
+      Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
+      ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down',
+      F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F5: 'f5', F6: 'f6',
+      F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
+      ' ': 'space', 'Space': 'space'
+    };
   }
   async updateSources(types = ['screen']) {
     this.sources = await desktopCapturer.getSources({ types: types });
@@ -65,8 +74,13 @@ class RDPApp {
       console.log("invalid target", target);
       return;
     }
+    let buttonStr = ['left', 'middle', 'right'][button] || 'left';
     if (action == 'click') {
-      robot.mouseClick();
+      robot.mouseClick(buttonStr);
+    } else if (action == 'mouseup' || action == 'up') {
+      robot.mouseToggle('up', buttonStr);
+    } else if (action == 'mousedown' || action == 'down') {
+      robot.mouseToggle('down', buttonStr);
     }
   }
   moveMouse_display(d, x, y) {
@@ -82,9 +96,19 @@ class RDPApp {
       robot.moveMouse(sx, sy);
     }
   }
-  sendKey(target, action, key, modifiers = []) {
-    // TODO
-    robot.keyTap(key, modifiers);
+  sendKey(keyMessage) {
+    let modifiers = keyMessage.modifiers || [];
+    console.log(keyMessage);
+    if (this.specialKeys[keyMessage.key]) {
+      robot.keyTap(this.specialKeys[keyMessage.key], modifiers);
+    } else if (/^[A-Za-z0-9]$/.test(keyMessage.key)) {
+      if (/[A-Z]/.test(keyMessage.key)) {
+        modifiers.push('shift')
+      }
+      robot.keyTap(keyMessage.key, modifiers);
+    } else {
+      robot.typeString(keyMessage.key);
+    }
   }
 }
 
@@ -93,7 +117,7 @@ function createWindow() {
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
     }
   })
 
@@ -115,8 +139,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sendMouse', async (event, mouseAction) => {
     return rdp.sendMouse(mouseAction.target, mouseAction.action, mouseAction.x, mouseAction.y, mouseAction.button);
   });
-  ipcMain.handle('sendKey', async (event, keyAction) => {
-    return rdp.sendKey(keyAction.target, keyAction.action, keyAction.key);
+  ipcMain.handle('sendKey', async (event, keyMessage) => {
+    return rdp.sendKey(keyMessage);
   });
 
 

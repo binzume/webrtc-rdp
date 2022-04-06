@@ -448,7 +448,11 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                             if (msg.type == 'mouse') {
                                 await RDP.sendMouse({ target: s, action: msg.action, x: msg.x, y: msg.y });
                             } else if (msg.type == 'key') {
-                                await RDP.sendKey(msg);
+                                let modifiers = [];
+                                msg.ctrl && modifiers.push('control');
+                                msg.alt && modifiers.push('alt');
+                                msg.shift && modifiers.push('shift');
+                                await RDP.sendKey({ target: s, action: msg.action, key: msg.key, modifiers: modifiers });
                             } else if (msg.type == 'stream') {
                                 await RDP.getDisplayStreams(['screen', 'window']);
                             } else {
@@ -485,16 +489,23 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             if (exstings.includes(d.roomId)) {
                 continue;
             }
+            let name = d.name || d.roomId;
             let cm = new ConnectionManager(d);
             let listEl = mkEl('ul', [], { className: 'streamlist' });
             let removeButtonEl = mkEl('button', 'x', (el) =>
                 el.addEventListener('click', (ev) => {
-                    // TODO: remove from settings.
-                    devices[d.roomId].manager.clear();
-                    devices[d.roomId].el.parentNode.removeChild(devices[d.roomId].el);
+                    confirm(`Remove ${name} ?`) && pairing.setPeerSettings(null);
                 })
             );
-            let el = mkEl('div', [mkEl('span', [d.roomId, removeButtonEl], { title: d.userAgent }), listEl]);
+            let el = mkEl('div', [mkEl('span', [name, removeButtonEl], { title: d.userAgent }), listEl]);
+            if (!globalThis.RDP) {
+                el.append(
+                    mkEl('button', 'Add Screen Stream', (el) =>
+                        el.addEventListener('click', (ev) => addStream(false))),
+                    mkEl('button', 'Add Camera Stream', (el) =>
+                        el.addEventListener('click', (ev) => addStream(true))),
+                );
+            }
             parentEl.append(el);
             devices[d.roomId] = { el: el, manager: cm, listEl: listEl };
             addDefaultStreams(devices[d.roomId]);
@@ -578,8 +589,8 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
             let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
             let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
-            if (action != 'mouseup' && (x > 1 || x < 0 || y > 1 || y < 0)) action = "move";
-            if (action == 'click' && dragging) action = "mouseup";
+            if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = "move";
+            if (action == 'click' && dragging) action = "up";
             player.sendMouseEvent(action, x, y, ev.button);
             ev.preventDefault();
         }
@@ -590,7 +601,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         videoEl.setPointerCapture(ev.pointerId);
         dragTimer = setTimeout(() => {
             dragging = true;
-            sendMouse('mousedown', ev);
+            sendMouse('down', ev);
         }, 200);
     });
     videoEl.addEventListener('pointermove', (ev) => dragging && sendMouse('move', ev));
@@ -600,7 +611,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         console.log('pointerup', dragging);
         if (dragging) {
             dragging = false;
-            sendMouse('mouseup', ev);
+            sendMouse('up', ev);
             let cancelClick = ev => ev.stopPropagation();
             window.addEventListener('click', cancelClick, true);
             setTimeout(() => window.removeEventListener('click', cancelClick, true), 10);
@@ -671,8 +682,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     })();
 
     // Publisher
-    document.querySelector('#addScreenStreamButton')?.addEventListener('click', (ev) => addStream(false));
-    document.querySelector('#addCameraStreamButton')?.addEventListener('click', (ev) => addStream(true));
     document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
 
     // Player
