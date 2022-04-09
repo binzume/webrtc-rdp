@@ -1,4 +1,4 @@
-const { app, ipcMain, BrowserWindow, desktopCapturer, screen } = require('electron')
+const { app, ipcMain, BrowserWindow, desktopCapturer, screen, systemPreferences } = require('electron')
 const path = require('path')
 const robot = require("robotjs");
 
@@ -124,6 +124,8 @@ function createWindow() {
 
 
 app.whenReady().then(() => {
+
+  console.log("getMediaAccessStatus: ", systemPreferences.getMediaAccessStatus('screen'));
 
   let rdp = new RDPApp();
 

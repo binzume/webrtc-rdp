@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "start-debug": "electron . --debug",
+    "prepare": "npx electron-rebuild",
     "build-win": "npx electron-builder --win --x64"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",

@@ -86,7 +86,7 @@ body.player #player {
 
 #devices>div {
     border: solid 2px #ccc;
-    min-height: 40pt;
+    min-height: 60pt;
     border-radius: 6pt;
 }
 
