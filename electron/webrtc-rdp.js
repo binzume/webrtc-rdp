@@ -9,7 +9,7 @@ const roomIdPinPrefix = signalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
 
 /** 
  * @typedef {{onmessage?: ((ev:any) => void), onopen?: ((ev:any) => void), ch?:RTCDataChannel }} DataChannelInfo
- * @typedef {{send?: ((ev:any, conn:any) => void)}} InputProxy
+ * @typedef {{send?: ((ev:any, ch: RTCDataChannel, conn:BaseConnection) => void)}} InputProxy
  * @typedef {{name?: string, roomId: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
  */
 
@@ -138,7 +138,7 @@ class BaseConnection {
         this.dataChannels[chLabel].ch?.send(data);
     }
 }
-class PairingManager extends BaseConnection {
+class PairingConnection extends BaseConnection {
     /**
      * @param {string} signalingUrl 
      */
@@ -148,8 +148,8 @@ class PairingManager extends BaseConnection {
         this.pin = null;
         this.userAgent = navigator.userAgent;
         this.options.signalingKey = signalingKey;
-        this.pinTimeoutSec = 3600;
-        this.pinTimer = null;
+        this.pinTimeoutSec = 1800;
+        this._pinTimer = null;
     }
 
     validatePin(pin) {
@@ -205,8 +205,8 @@ class PairingManager extends BaseConnection {
     }
 
     async connect() {
-        clearTimeout(this.pinTimer);
-        this.pinTimer = setTimeout(() => this.disconnect(), this.pinTimeoutSec * 1000);
+        clearTimeout(this._pinTimer);
+        this._pinTimer = setTimeout(() => this.disconnect(), this.pinTimeoutSec * 1000);
         this.roomId = roomIdPinPrefix + this.pin;
         await this.setupConnection().connect(null);
     }
@@ -266,7 +266,7 @@ class PublisherConnection extends BaseConnection {
 
         this.dataChannels['controlEvent'] = {
             onmessage: (ev) => {
-                this.inputProxy?.send(JSON.parse(ev.data), this);
+                this.inputProxy?.send(JSON.parse(ev.data), ev.target, this);
             }
         };
         await this.setupConnection().connect(this.mediaStream, null);
@@ -307,7 +307,7 @@ class PlayerConnection extends BaseConnection {
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
-        this.mediaStream = null;
+        this.onstreams = null;
     }
 
     async connect() {
@@ -318,10 +318,21 @@ class PlayerConnection extends BaseConnection {
         this.dataChannels['controlEvent'] = {
             onopen: (ev) => {
                 console.log('ch open', ev);
-                ev.target.send(JSON.stringify({ type: "play", stream: 'default' }));
+                ev.target.send(JSON.stringify({ type: "getstreamlist" }));
             },
+            onmessage: (ev) => {
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'streams') {
+                    this.onstreams && this.onstreams(msg.streams);
+                } else if (msg.type == 'redirect') {
+                    if (msg.roomId) {
+                        this.disconnect();
+                        this.roomId = msg.roomId;
+                        this.connect();
+                    }
+                }
+            }
         };
-
         await this.setupConnection().connect(this.mediaStream, null);
     }
     initConnection(conn) {
@@ -400,6 +411,29 @@ class ConnectionManager {
 }
 
 
+class StreamProvider {
+    async getStreams() {
+        return await RDP.getDisplayStreams(['screen', 'window']);
+    }
+    async getMediaStream(id, audio = false) {
+        return await navigator.mediaDevices.getUserMedia({
+            video: {
+                // @ts-ignore
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: id,
+                }
+            },
+            audio: audio ? {
+                // @ts-ignore
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                }
+            } : null
+        });
+    }
+}
+
 window.addEventListener('DOMContentLoaded', (ev) => {
     if (globalThis.RDP) {
         document.body.classList.add('standalone');
@@ -433,33 +467,19 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => confirm('CLear all settiungs?') && Settings.clear());
 
-    let addDefaultStreams = (device) => {
+    let addDefaultStreams = ( /** @type {{manager: ConnectionManager, listEl: HTMLElement}} */device) => {
         if (!globalThis.RDP) {
             return;
         }
+        var streamProvider = new StreamProvider();
         (async () => {
             console.log("Using window.RDP");
-            let streams = await RDP.getDisplayStreams(['screen']); // 'window'
-            for (let s of streams.slice(0, 5)) {
+            let addScreenStream = async (s) => {
                 try {
-                    let mediaStream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            // @ts-ignore
-                            mandatory: {
-                                chromeMediaSource: 'desktop',
-                                chromeMediaSourceId: s.id,
-                            }
-                        },
-                        audio: {
-                            // @ts-ignore
-                            mandatory: {
-                                chromeMediaSource: 'desktop',
-                            }
-                        }
-                    });
+                    let mediaStream = await streamProvider.getMediaStream(s.id, true);
                     let lastMouseMoveTime = 0;
                     let c = await device.manager.addStream(mediaStream, {
-                        async send(msg, conn) {
+                        async send(msg, ch, conn) {
                             if (msg.type == 'mouse') {
                                 let now = Date.now();
                                 if (now - lastMouseMoveTime < 40 && msg.action == 'move') {
@@ -473,25 +493,38 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                                 msg.alt && modifiers.push('alt');
                                 msg.shift && modifiers.push('shift');
                                 await RDP.sendKey({ target: s, action: msg.action, key: msg.key, modifiers: modifiers });
-                            } else if (msg.type == 'stream') {
-                                await RDP.getDisplayStreams(['screen', 'window']);
+                            } else if (msg.type == 'getstreamlist') {
+                                let streams = await streamProvider.getStreams();
+                                ch.send(JSON.stringify({ 'type': 'streams', 'streams': streams.map(s => ({ id: s.id, name: s.name })) }));
+                            } else if (msg.type == 'play') {
+                                let streams = await streamProvider.getStreams();
+                                let s = streams.find(s => s.id == msg.streamId);
+                                if (!s) {
+                                    return;
+                                }
+                                let c = await addScreenStream(s);
+                                ch.send(JSON.stringify({ type: 'redirect', 'roomId': c?.conn.roomId }));
                             } else {
                                 console.log("drop:", msg);
                             }
                         }
                     }, false, s.name);
-                    let el = document.querySelector('#streams');
                     c.opaque = mkEl('li');
                     updateStreamInfo(device.manager, c);
                     c.conn.onstatechange = () => updateStreamInfo(device.manager, c);
                     device.listEl.appendChild(c.opaque);
+                    return c;
                 } catch (e) {
                     console.log(e);
+                    return null;
                 }
+            };
+            let streams = await RDP.getDisplayStreams(['screen']); // 'window'
+            for (let s of streams.slice(0, 5)) {
+                await addScreenStream(s);
             }
         })();
     };
-
 
     let devices = {};
     let updateDeviceList = (/** @type {DeviceSettings[]} */ deviceSettings) => {
@@ -544,7 +577,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let onSettingUpdated = (settings) => {
         document.getElementById('pairng').style.display = settings[0] ? "none" : "block";
         document.getElementById('publishOrPlay').style.display = settings[0] ? "block" : "none";
-        updateDeviceList(settings);
+        updateDeviceList(Settings.getPeerDevices());
     };
     onSettingUpdated(Settings.getPeerDevices());
     Settings.onsettingsupdate = onSettingUpdated;
@@ -568,7 +601,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let addStream = async (camera = false) => {
         let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
         let inputProxy = {
-            send(msg, conn) {
+            send(msg, ch, conn) {
                 if (inputProxySoc?.readyState == 1 && (msg.type == 'mouse' || msg.type == 'key') && conn.target) {
                     msg.target = conn.target;
                     inputProxySoc.send(JSON.stringify(msg));
@@ -606,6 +639,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     videoEl.style.display = "block";
                     document.getElementById('connectingBox').style.display = "none";
                 }
+            };
+            player.onstreams = (streams) => {
+                let selectEl = document.getElementById('streamSelect2');
+                selectEl.innerText = '';
+                for (let s of streams) {
+                    selectEl.append(mkEl('option', s.name, { value: s.id }));
+                }
+                selectEl.style.display = 'inline';
+                console.log(streams);
             };
             player.options.signalingKey = currentDevice.signalingKey;
             player.connect();
@@ -668,10 +710,14 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             playStream();
         }
     });
+    document.querySelector('#streamSelect2').addEventListener('change', (ev) => {
+        let id = /** @type {HTMLInputElement} */(document.querySelector('#streamSelect2')).value;
+        player.sendData('controlEvent', JSON.stringify({ type: 'play', streamId: id }));
+    });
 
 
     // Pairing
-    let pairing = new PairingManager(signalingUrl);
+    let pairing = new PairingConnection(signalingUrl);
     document.getElementById('inputPin').addEventListener('click', (ev) => {
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
@@ -695,6 +741,5 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         };
         pairing.startPairing();
     });
-
 
 }, { once: true });
