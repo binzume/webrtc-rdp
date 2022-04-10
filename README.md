@@ -40,6 +40,17 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 - [単体](https://binzume.github.io/webrtc-rdp/webxr/)でも動きますが，[binzume/vr-workspace](https://github.com/binzume/vr-workspace)からアプリとして読み込む前提の作りになっています
 - [A-Frame](https://aframe.io/)を使っています．
 
+## Electron App (Experimental)
+
+Requires: Node.js and Python
+
+```
+cd electron
+npm install
+npx electron-rebuild
+npm start
+```
+
 ## Security
 
 - P2Pなので，同じネットワーク内で使う場合は共有している映像や音声などはインターネットを経由しません．
