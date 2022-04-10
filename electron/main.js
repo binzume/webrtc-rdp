@@ -31,7 +31,7 @@ class RDPApp {
     /** @type {Record<string, Electron.DesktopCapturerSource[]>} */
     this.sources = [];
     this.specialKeys = {
-      Control: 'control', Shift: 'shift', ALT: 'alt', Meta: 'command', Insert: 'insert',
+      Control: 'control', Shift: 'shift', Alt: 'alt', Meta: 'command', Insert: 'insert',
       Enter: 'enter', Backspace: 'backspace', Tab: 'tab', Escape: 'escape', Delete: 'delete',
       Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
       ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down',
@@ -39,9 +39,10 @@ class RDPApp {
       F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
       ' ': 'space', 'Space': 'space'
     };
+    robot.setKeyboardDelay(1);
   }
   async updateSources(types = ['screen']) {
-    this.sources = await desktopCapturer.getSources({ types: types });
+    this.sources = await desktopCapturer.getSources({ types: types, thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false });
     if (types.includes('screen')) {
       this.displays = {};
       for (let d of screen.getAllDisplays()) {
@@ -92,17 +93,26 @@ class RDPApp {
     }
   }
   sendKey(keyMessage) {
-    let modifiers = keyMessage.modifiers || [];
-    console.log(keyMessage);
-    if (this.specialKeys[keyMessage.key]) {
-      robot.keyTap(this.specialKeys[keyMessage.key], modifiers);
-    } else if (/^[A-Za-z0-9]$/.test(keyMessage.key)) {
-      if (/[A-Z]/.test(keyMessage.key)) {
-        modifiers.push('shift')
+    let modifiers = keyMessage.modifiers || [], key = keyMessage.key;
+    if (key == 'KanaMode' || key == 'HiraganaKatakana') {
+      // Robot.js doesn't support KanaMode key.
+      key = ' ';
+      modifiers = ['control'];
+    }
+    if (keyMessage.action != 'press') {
+      // TODO: robot.keyToggle()
+      return;
+    }
+
+    if (this.specialKeys[key]) {
+      robot.keyTap(this.specialKeys[key], modifiers);
+    } else if (/^[A-Za-z0-9]$/.test(key)) {
+      if (/[A-Z]/.test(key)) {
+        modifiers.push('shift');
       }
-      robot.keyTap(keyMessage.key, modifiers);
+      robot.keyTap(key, modifiers);
     } else {
-      robot.typeString(keyMessage.key);
+      robot.typeString(key);
     }
   }
 }
@@ -124,15 +134,14 @@ function createWindow() {
 
 
 app.whenReady().then(() => {
-
-  console.log("getMediaAccessStatus: ", systemPreferences.getMediaAccessStatus('screen'));
+  if (systemPreferences.getMediaAccessStatus('screen') != 'granted') {
+    console.log('ERROR: No screen capture permission');
+  }
 
   let rdp = new RDPApp();
 
   ipcMain.handle('getDisplayStreams', async (event, types) => {
     await rdp.updateSources(types);
-    // console.log(robot.getScreenSize());
-    // console.log(rdp.displays);
     return rdp.getSourceInfos();
   });
   ipcMain.handle('sendMouse', async (event, mouseAction) => {
