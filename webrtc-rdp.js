@@ -271,7 +271,18 @@ class PlayerConnection extends BaseConnection {
             return;
         }
 
-        this.dataChannels['controlEvent'] = {};
+        this.dataChannels['controlEvent'] = {
+            onmessage: (ev) => {
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'redirect') {
+                    if (msg.roomId) {
+                        this.disconnect();
+                        this.roomId = msg.roomId;
+                        this.connect();
+                    }
+                }
+            }
+        };
 
         const conn = this.setupConnection();
         conn.on('addstream', (ev) => {
@@ -373,11 +384,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let mkEl = (tag, children, attrs) => {
         let el = document.createElement(tag);
         children && el.append(...[children].flat(999));
-        if (typeof (attrs) == "function") {
-            attrs(el);
-        } else if (typeof (attrs) == "object") {
-            Object.assign(el, attrs);
-        }
+        attrs instanceof Function ? attrs(el) : (attrs && Object.assign(el, attrs));
         return el;
     };
 

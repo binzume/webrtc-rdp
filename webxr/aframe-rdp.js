@@ -85,7 +85,18 @@ class PlayerConnection extends BaseConnection {
 			return;
 		}
 
-		this.dataChannels['controlEvent'] = {};
+        this.dataChannels['controlEvent'] = {
+            onmessage: (ev) => {
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'redirect') {
+                    if (msg.roomId) {
+                        this.disconnect();
+                        this.roomId = msg.roomId;
+                        this.connect();
+                    }
+                }
+            }
+        };
 
 		const conn = this.setupConnection();
 		conn.on('addstream', (ev) => {
