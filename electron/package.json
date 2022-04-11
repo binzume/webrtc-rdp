@@ -7,7 +7,8 @@
     "start": "electron .",
     "start-debug": "electron . --debug",
     "prepare": "npx electron-rebuild",
-    "build-win": "npx electron-builder --win --x64"
+    "build-win": "npx electron-builder --win --x64",
+    "build-macos": "npx electron-builder --mac --x64 --dir"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [
@@ -25,8 +26,9 @@
   "dependencies": {
     "@open-ayame/ayame-web-sdk": "^2022.1.0",
     "ffi-napi": "^4.0.3",
-    "ref-napi": "^3.0.3",
-    "robotjs": "^0.6.0"
+    "hurdle-robotjs": "^0.6.7",
+    "mac-screen-capture-permissions": "^2.0.0",
+    "ref-napi": "^3.0.3"
   },
   "build": {
     "appId": "net.binzume.webrtc-rdp",

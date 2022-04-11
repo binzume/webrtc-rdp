@@ -1,6 +1,6 @@
 const { app, ipcMain, BrowserWindow, desktopCapturer, screen, systemPreferences } = require('electron')
 const path = require('path')
-const robot = require("robotjs");
+const robot = require("hurdle-robotjs");
 
 var ffi = require('ffi-napi')
 var ref = require('ref-napi')
@@ -8,7 +8,6 @@ var ref = require('ref-napi')
 const wu32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
-  // 'SetProcessDpiAwarenessContext': [ref.types.int32, [ref.types.int32]],
 });
 
 function GetWindowRect(hWnd) {
@@ -81,7 +80,12 @@ class RDPApp {
   }
   moveMouse_display(d, x, y) {
     let sx = d.bounds.x + d.bounds.width * x, sy = d.bounds.y + d.bounds.height * y;
-    robot.moveMouse(sx * d.scaleFactor, sy * d.scaleFactor);
+    if (process.platform == 'win32') {
+      // TODO: multi monitor with deferent DPIs.
+      robot.moveMouse(sx * d.scaleFactor, sy * d.scaleFactor);
+    } else {
+      robot.moveMouse(sx, sy);
+    }
   }
   moveMouse_window(windowId, x, y) {
     wu32.SetForegroundWindow(windowId);
@@ -105,12 +109,17 @@ class RDPApp {
     }
 
     if (this.specialKeys[key]) {
-      robot.keyTap(this.specialKeys[key], modifiers);
+      key = this.specialKeys[key];
+      robot.keyToggle(key, 'down', modifiers);
+      robot.keyToggle(key, 'up', modifiers);
+      // robot.keyTap(key, modifiers);
     } else if (/^[A-Za-z0-9]$/.test(key)) {
       if (/[A-Z]/.test(key)) {
         modifiers.push('shift');
       }
-      robot.keyTap(key, modifiers);
+      robot.keyToggle(key, 'down', modifiers);
+      robot.keyToggle(key, 'up', modifiers);
+      // robot.keyTap(key, modifiers);
     } else {
       robot.typeString(key);
     }
