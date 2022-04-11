@@ -39,6 +39,7 @@ class RDPApp {
       ' ': 'space', 'Space': 'space'
     };
     robot.setKeyboardDelay(1);
+    robot.setMouseDelay(1);
   }
   async updateSources(types = ['screen']) {
     this.sources = await desktopCapturer.getSources({ types: types, thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false });
@@ -112,7 +113,7 @@ class RDPApp {
       key = this.specialKeys[key];
       robot.keyToggle(key, 'down', modifiers);
       robot.keyToggle(key, 'up', modifiers);
-      // robot.keyTap(key, modifiers);
+      // robot.keyTap(this.specialKeys[key], modifiers);
     } else if (/^[A-Za-z0-9]$/.test(key)) {
       if (/[A-Z]/.test(key)) {
         modifiers.push('shift');
