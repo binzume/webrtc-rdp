@@ -81,12 +81,8 @@ class RDPApp {
   }
   moveMouse_display(d, x, y) {
     let sx = d.bounds.x + d.bounds.width * x, sy = d.bounds.y + d.bounds.height * y;
-    if (process.platform == 'win32') {
-      // TODO: multi monitor with deferent DPIs.
-      robot.moveMouse(sx * d.scaleFactor, sy * d.scaleFactor);
-    } else {
-      robot.moveMouse(sx, sy);
-    }
+    let p = screen.dipToScreenPoint({ x: sx, y: sy });
+    robot.moveMouse(p.x, p.y);
   }
   moveMouse_window(windowId, x, y) {
     wu32.SetForegroundWindow(windowId);
