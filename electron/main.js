@@ -1,22 +1,17 @@
-const { app, ipcMain, BrowserWindow, desktopCapturer, screen, systemPreferences } = require('electron');
+const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
 const robot = require("hurdle-robotjs");
-
 const ffi = require('ffi-napi');
-const ref = require('ref-napi');
 const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
 
-const wu32 = process.platform == 'win32' && ffi.Library("user32.dll", {
+const user32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
-  'GetDpiForWindow': ["int32", ["int32"]],
-  'LogicalToPhysicalPointForPerMonitorDPI': ["int32", ["int32", "pointer"]],
-
 });
 
 function GetWindowRect(hWnd) {
   let rectBuf = Buffer.alloc(16);
-  if (!wu32.GetWindowRect(hWnd, rectBuf)) {
+  if (!user32.GetWindowRect(hWnd, rectBuf)) {
     return null;
   }
   return {
@@ -27,20 +22,11 @@ function GetWindowRect(hWnd) {
   };
 }
 
-function LogicalToPhysicalPointForPerMonitorDPI(hWnd, p) {
-  let rectBuf = Buffer.alloc(8);
-  rectBuf.writeInt32LE(p.x, 0);
-  rectBuf.writeInt32LE(p.y, 4);
-  if (!wu32.LogicalToPhysicalPointForPerMonitorDPI(hWnd, rectBuf)) {
-    return null;
-  }
-  return {
-    x: rectBuf.readUInt32LE(0),
-    y: rectBuf.readUInt32LE(4),
-  };
+function SetForegroundWindow(hWnd) {
+  return user32.SetForegroundWindow(hWnd);
 }
 
-class RDPApp {
+class InputManager {
   constructor() {
     /** @type {Record<string, Electron.Display>} */
     this.displays = {};
@@ -107,7 +93,7 @@ class RDPApp {
     }
   }
   moveMouse_window(windowId, x, y) {
-    wu32.SetForegroundWindow(windowId);
+    SetForegroundWindow(windowId);
     let rect = GetWindowRect(windowId);
     if (rect) {
       let sx = rect.left + (rect.right - rect.left) * x;
@@ -145,22 +131,56 @@ class RDPApp {
   }
 }
 
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+class RDPApp {
+  constructor() {
+    this.mainWindow = null;
+    this.tray = this.createTray();
+    this.inputManager = new InputManager();
+    this.createWindow();
+  }
+  createWindow() {
+    if (this.mainWindow) {
+      return;
     }
-  });
+    const window = new BrowserWindow({
+      width: 800,
+      height: 600,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+      }
+    });
 
-  mainWindow.loadFile('index.html');
-  if (process.argv.includes('--debug')) {
-    mainWindow.webContents.openDevTools();
+    window.addListener('minimize', (ev) => {
+      window.hide();
+      ev.preventDefault();
+    });
+    window.addListener('closed', (ev) => {
+      this.mainWindow = null;
+    });
+
+    window.loadFile('index.html');
+    if (process.argv.includes('--debug')) {
+      window.webContents.openDevTools();
+    }
+    this.mainWindow = window;
+  }
+  createTray() {
+    let iconPath = __dirname + '/images/icon1.png';
+    let contextMenu = Menu.buildFromTemplate([
+      { label: 'Settings', click: () => this.mainWindow.show() },
+      { label: 'Reload', click: () => this.mainWindow.reload() },
+      { type: 'separator' },
+      { label: 'Quit', role: 'quit' },
+    ]);
+    let tray = new Tray(iconPath);
+    tray.setContextMenu(contextMenu);
+    tray.setToolTip(app.name);
+    return tray;
   }
 }
 
 
+let rdp;
 app.whenReady().then(() => {
   if (systemPreferences.getMediaAccessStatus('screen') != 'granted') {
     console.log('ERROR: No screen capture permission');
@@ -173,25 +193,24 @@ app.whenReady().then(() => {
     }
   }
 
-  let rdp = new RDPApp();
+  rdp = new RDPApp();
 
+  let inputManager = rdp.inputManager;
   ipcMain.handle('getDisplayStreams', async (event, types) => {
-    await rdp.updateSources(types);
-    return rdp.getSourceInfos();
+    await inputManager.updateSources(types);
+    return inputManager.getSourceInfos();
   });
   ipcMain.handle('sendMouse', async (event, mouseAction) => {
-    return rdp.sendMouse(mouseAction.target, mouseAction.action, mouseAction.x, mouseAction.y, mouseAction.button);
+    return inputManager.sendMouse(mouseAction.target, mouseAction.action, mouseAction.x, mouseAction.y, mouseAction.button);
   });
   ipcMain.handle('sendKey', async (event, keyMessage) => {
-    return rdp.sendKey(keyMessage);
+    return inputManager.sendKey(keyMessage);
   });
 
-
-  createWindow();
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) rdp.createWindow();
   })
 })
 

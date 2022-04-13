@@ -12,6 +12,11 @@ body.standalone .browser {
     display: none;
 }
 
+body.standalone :not(input):not(textarea) {
+    user-select: none;
+    cursor: default;
+}
+
 body.player .noplayer {
     display: none;
 }
