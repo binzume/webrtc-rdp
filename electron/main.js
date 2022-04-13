@@ -1,13 +1,17 @@
-const { app, ipcMain, BrowserWindow, desktopCapturer, screen, systemPreferences } = require('electron')
-const path = require('path')
+const { app, ipcMain, BrowserWindow, desktopCapturer, screen, systemPreferences } = require('electron');
+const path = require('path');
 const robot = require("hurdle-robotjs");
 
-var ffi = require('ffi-napi')
-var ref = require('ref-napi')
+const ffi = require('ffi-napi');
+const ref = require('ref-napi');
+const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
 
 const wu32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
+  'GetDpiForWindow': ["int32", ["int32"]],
+  'LogicalToPhysicalPointForPerMonitorDPI': ["int32", ["int32", "pointer"]],
+
 });
 
 function GetWindowRect(hWnd) {
@@ -20,6 +24,19 @@ function GetWindowRect(hWnd) {
     top: rectBuf.readUInt32LE(4),
     right: rectBuf.readUInt32LE(8),
     bottom: rectBuf.readUInt32LE(12),
+  };
+}
+
+function LogicalToPhysicalPointForPerMonitorDPI(hWnd, p) {
+  let rectBuf = Buffer.alloc(8);
+  rectBuf.writeInt32LE(p.x, 0);
+  rectBuf.writeInt32LE(p.y, 4);
+  if (!wu32.LogicalToPhysicalPointForPerMonitorDPI(hWnd, rectBuf)) {
+    return null;
+  }
+  return {
+    x: rectBuf.readUInt32LE(0),
+    y: rectBuf.readUInt32LE(4),
   };
 }
 
@@ -68,6 +85,7 @@ class RDPApp {
       }
     } else {
       console.log("invalid target", target);
+      this.moveMouse_display(screen.getPrimaryDisplay(), x, y);
       return;
     }
     let buttonStr = ['left', 'middle', 'right'][button] || 'left';
@@ -81,8 +99,12 @@ class RDPApp {
   }
   moveMouse_display(d, x, y) {
     let sx = d.bounds.x + d.bounds.width * x, sy = d.bounds.y + d.bounds.height * y;
-    let p = screen.dipToScreenPoint({ x: sx, y: sy });
-    robot.moveMouse(p.x, p.y);
+    if (process.platform == 'win32') {
+      let p = screen.dipToScreenPoint({ x: sx, y: sy });
+      robot.moveMouse(p.x, p.y);
+    } else {
+      robot.moveMouse(sx, sy);
+    }
   }
   moveMouse_window(windowId, x, y) {
     wu32.SetForegroundWindow(windowId);
@@ -142,6 +164,13 @@ function createWindow() {
 app.whenReady().then(() => {
   if (systemPreferences.getMediaAccessStatus('screen') != 'granted') {
     console.log('ERROR: No screen capture permission');
+    if (process.platform == 'darwin') {
+      if (!hasPromptedForPermission()) {
+        hasScreenCapturePermission();
+      } else {
+        openSystemPreferences();
+      }
+    }
   }
 
   let rdp = new RDPApp();
