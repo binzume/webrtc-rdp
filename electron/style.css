@@ -23,23 +23,34 @@ body.player .noplayer {
 
 #player {
     display: none;
+    text-align: center;
 }
 
 body.player #player {
     display: block;
 }
 
-#pairng {
-    text-align: center;
+#player-menu {
+    height: 18pt;
 }
 
-#pinInputBox,
-#pinDisplayBox {
-    width: 450pt;
-    margin: 0 auto;
-    padding: 10pt;
+#screen {
+    display: none;
+    width: 100%;
+    height: calc(100vh - 20pt);
+    padding: 0;
+    margin: 0;
+    border: none;
+    background-color: #ccc;
+}
+
+#pairng {
+    max-width: 400pt;
+    margin: 12pt auto;
+    padding: 8pt 0;
     border: 2px solid #ccc;
     border-radius: 4pt;
+    text-align: center;
 }
 
 #pairng .pin {
@@ -48,6 +59,13 @@ body.player #player {
 
 #pairng .pin * {
     font-size: 40pt;
+}
+
+#pairng h2 {
+    font-size: 20pt;
+    text-align: center;
+    margin: 0 0 20pt 0;
+    padding: 0;
 }
 
 #publishOrPlay {
@@ -91,7 +109,7 @@ body.player #player {
 
 #devices>div {
     border: solid 2px #ccc;
-    min-height: 60pt;
+    min-height: 50pt;
     border-radius: 6pt;
 }
 
@@ -102,8 +120,17 @@ body.player #player {
     width: 100%;
     background-color: #abf;
     font-weight: bold;
+    margin-bottom: 4pt;
 }
 
 #devices>div>span>button {
     float: right;
+}
+
+.nodevices-msg {
+    display: none;
+}
+
+.nodevices .nodevices-msg {
+    display: block;
 }
