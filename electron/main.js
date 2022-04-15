@@ -175,6 +175,7 @@ class RDPApp {
     let tray = new Tray(iconPath);
     tray.setContextMenu(contextMenu);
     tray.setToolTip(app.name);
+    tray.on('click', () => tray.popUpContextMenu());
     return tray;
   }
 }
