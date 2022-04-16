@@ -171,6 +171,7 @@ class PairingConnection extends BaseConnection {
         this.userAgent = navigator.userAgent;
         this.options.signalingKey = signalingKey;
         this.pinTimeoutSec = 3600;
+        this.version = 1;
     }
 
     validatePin(pin) {
@@ -184,7 +185,7 @@ class PairingConnection extends BaseConnection {
 
         this.dataChannels['secretExchange'] = {
             onopen: (ch, ev) => {
-                ch.send(JSON.stringify({ type: "hello", userAgent: this.userAgent }));
+                ch.send(JSON.stringify({ type: "hello", userAgent: this.userAgent, version: this.version }));
             },
             onmessage: (_ch, ev) => {
                 console.log('ch msg', ev.data);
@@ -211,6 +212,10 @@ class PairingConnection extends BaseConnection {
                 console.log('ch msg', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'hello') {
+                    if (msg.version && msg.version != this.version) {
+                        console.log('Unsupported version: ' + msg.version);
+                        this.disconnect();
+                    }
                     let roomId = roomIdPrefix + this._generateSecret(16);
                     let token = this._generateSecret(16);
                     ch.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
@@ -866,6 +871,11 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     });
     document.querySelector('#playButton').addEventListener('click', (ev) => playStream());
     document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
+    document.querySelector('#closePlayerButton').addEventListener('click', (ev) => {
+        player?.disconnect();
+        videoEl.style.display = "none";
+        document.body.classList.remove('player');
+    });
 
     // Pairing
     document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
