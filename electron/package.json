@@ -27,11 +27,11 @@
     "@open-ayame/ayame-web-sdk": "^2022.1.0",
     "ffi-napi": "^4.0.3",
     "hurdle-robotjs": "^0.6.7",
-    "mac-screen-capture-permissions": "^2.0.0",
-    "ref-napi": "^3.0.3"
+    "mac-screen-capture-permissions": "^2.0.0"
   },
   "build": {
     "appId": "net.binzume.webrtc-rdp",
+    "productName": "WebRTC Remote Desktop",
     "npmRebuild": false
   }
 }
