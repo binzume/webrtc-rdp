@@ -11,6 +11,9 @@ const user32 = process.platform == 'win32' && ffi.Library("user32.dll", {
 
 function GetWindowRect(hWnd) {
   let rectBuf = Buffer.alloc(16);
+  if (!user32) {
+    return null;
+  }
   if (!user32.GetWindowRect(hWnd, rectBuf)) {
     return null;
   }
@@ -23,6 +26,9 @@ function GetWindowRect(hWnd) {
 }
 
 function SetForegroundWindow(hWnd) {
+  if (!user32) {
+    return false;
+  }
   return user32.SetForegroundWindow(hWnd);
 }
 
@@ -60,17 +66,20 @@ class InputManager {
       display_id: s.display_id,
     }));
   }
-  sendMouse(target, action, x, y, button) {
+  _getWindowId(target) {
+    let m = target?.id?.match(/^window:(\d+):/);
+    return m ? m[1] : null;
+  }
+  sendMouse(mouseMessage) {
+    let { target, action, x, y, button } = mouseMessage;
+    let windowId = this._getWindowId(target);
     let d = this.displays[target.display_id];
-    if (d) {
+    if (windowId) {
+      this.moveMouse_window(windowId, x, y);
+    } else if (d) {
       this.moveMouse_display(d, x, y);
-    } else if (target.id.startsWith('window:')) {
-      let m = target.id.match(/^window:(\d+):/);
-      if (m) {
-        this.moveMouse_window(m[1], x, y);
-      }
     } else {
-      console.log("invalid target", target);
+      console.log("invalid target. use primary display.", target);
       this.moveMouse_display(screen.getPrimaryDisplay(), x, y);
       return;
     }
@@ -102,31 +111,33 @@ class InputManager {
     }
   }
   sendKey(keyMessage) {
-    let modifiers = keyMessage.modifiers || [], key = keyMessage.key;
+    let { target, action, key } = keyMessage;
+    let modifiers = keyMessage.modifiers || [];
+    let windowId = this._getWindowId(target);
+    windowId && SetForegroundWindow(windowId);
+
     if (key == 'KanaMode' || key == 'HiraganaKatakana') {
       // Robot.js doesn't support KanaMode key.
       key = ' ';
       modifiers = ['control'];
     }
-    if (keyMessage.action != 'press') {
-      // TODO: robot.keyToggle()
-      return;
-    }
 
     if (this.specialKeys[key]) {
       key = this.specialKeys[key];
-      robot.keyToggle(key, 'down', modifiers);
-      robot.keyToggle(key, 'up', modifiers);
-      // robot.keyTap(this.specialKeys[key], modifiers);
     } else if (/^[A-Za-z0-9]$/.test(key)) {
       if (/[A-Z]/.test(key)) {
         modifiers.push('shift');
       }
+    } else {
+      action == 'press' && robot.typeString(key);
+      return;
+    }
+    if (action == 'press') {
+      // robot.keyTap(key, modifiers);
       robot.keyToggle(key, 'down', modifiers);
       robot.keyToggle(key, 'up', modifiers);
-      // robot.keyTap(key, modifiers);
     } else {
-      robot.typeString(key);
+      robot.keyToggle(key, action, modifiers);
     }
   }
 }
@@ -143,8 +154,8 @@ class RDPApp {
       return;
     }
     const window = new BrowserWindow({
-      width: 800,
-      height: 600,
+      width: 640,
+      height: 480,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
       }
@@ -201,8 +212,8 @@ app.whenReady().then(() => {
     await inputManager.updateSources(types);
     return inputManager.getSourceInfos();
   });
-  ipcMain.handle('sendMouse', async (event, mouseAction) => {
-    return inputManager.sendMouse(mouseAction.target, mouseAction.action, mouseAction.x, mouseAction.y, mouseAction.button);
+  ipcMain.handle('sendMouse', async (event, mouseMessage) => {
+    return inputManager.sendMouse(mouseMessage);
   });
   ipcMain.handle('sendKey', async (event, keyMessage) => {
     return inputManager.sendKey(keyMessage);
