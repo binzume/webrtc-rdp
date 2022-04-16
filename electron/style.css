@@ -44,7 +44,7 @@ body.player #player {
     background-color: #ccc;
 }
 
-#pairng {
+#pairing {
     max-width: 400pt;
     margin: 12pt auto;
     padding: 8pt 0;
@@ -53,19 +53,28 @@ body.player #player {
     text-align: center;
 }
 
-#pairng .pin {
+#pairing .pin {
     font-size: 40pt;
 }
 
-#pairng .pin * {
+#pairing .pin * {
     font-size: 40pt;
 }
 
-#pairng h2 {
+#pairing h2 {
     font-size: 20pt;
     text-align: center;
-    margin: 0 0 20pt 0;
+    margin: 0 0 10pt 0;
     padding: 0;
+}
+
+#pairing input::-webkit-outer-spin-button,
+#pairing input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#pairing input[type=number] {
+  -moz-appearance: textfield;
 }
 
 #publishOrPlay {

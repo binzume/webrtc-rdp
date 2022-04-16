@@ -14,7 +14,7 @@
     <h1>WebRTC Remote Desktop</h1>
   </div>
 
-  <div id="pairng" style="display:none;text-align: center;">
+  <div id="pairing" style="display:none;text-align: center;">
     <h2>Connect to peer device</h2>
     <button id="generatePin">Generate PIN</button> or <button id="inputPin">Input PIN</button>
     <div id="pinDisplayBox" style="display:none;">
@@ -25,7 +25,7 @@
     </div>
     <div id="pinInputBox">
       <div class="pin">
-        PIN:<input type="text" inputmode="numeric" maxlength="8" id="pinInput"
+        PIN:<input type="number" inputmode="numeric" maxlength="8" id="pinInput"
           style="width:200pt;height:50pt;" /><button id="sendPinButton" style="width:80pt;height:50pt;">OK</button>
       </div>
       Visit this page on peer device, and generate PIN.

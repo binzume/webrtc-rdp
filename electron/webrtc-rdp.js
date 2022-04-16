@@ -153,7 +153,7 @@ class BaseConnection {
         if (c && !c.ch) {
             c.ch = ch;
             ch.onmessage = c.onmessage?.bind(ch, ch);
-            // NOTE: dataChannel.onclose = null in Ayame.
+            // NOTE: dataChannel.onclose = null in Ayame web sdk.
             ch.addEventListener('open', c.onopen?.bind(ch, ch));
             ch.addEventListener('close', c.onclose?.bind(ch, ch));
         }
@@ -178,7 +178,6 @@ class PairingConnection extends BaseConnection {
     }
 
     async startPairing() {
-        console.log("PIN:" + this.pin);
         this.pin = this._generatePin();
         this.disconnect();
         this.connectTimeoutMs = this.pinTimeoutSec * 1000;
@@ -424,7 +423,7 @@ class StreamSelectScreen {
      * @param {object} msg 
      */
     async _handleMessage(cm, ch, msg) {
-        if (msg.type == 'mouse' && msg.action == 'click') {
+        if (msg.type == 'mouse' && (msg.action == 'click' || msg.action == 'up')) {
             this.update();
             let x = msg.x * this.canvasEl.width, y = msg.y * this.canvasEl.height;
             let layout = this.buttonLayout;
@@ -784,7 +783,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     };
 
     let onSettingUpdated = (settings) => {
-        document.getElementById('pairng').style.display = settings[0] ? "none" : "block";
+        document.getElementById('pairing').style.display = settings[0] ? "none" : "block";
         document.getElementById('publishOrPlay').style.display = settings[0] ? "block" : "none";
         updateDeviceList(settings);
     };
@@ -870,7 +869,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     // Pairing
     document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
-        document.getElementById("pairng").style.display = "block";
+        document.getElementById("pairing").style.display = "block";
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
     });
