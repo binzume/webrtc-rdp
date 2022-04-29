@@ -1,10 +1,11 @@
 'use strict';
 
 // Please replace with your id and signalingKey!
-const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
-const signalingKey = location.host.includes("binzume.") ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
-const roomIdPrefix = signalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
-const roomIdPinPrefix = signalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
+const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
+const sendSignalingKey = location.host.includes("binzume.");
+const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
+const roomIdPrefix = sendSignalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
+const roomIdPinPrefix = sendSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
 const settingsVersion = 1;
 
 class BaseConnection {
