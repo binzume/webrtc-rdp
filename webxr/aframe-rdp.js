@@ -1,131 +1,226 @@
 // @ts-check
 'use strict';
 
-const debugLog = true;
+class Settings {
+	static settingsKey = 'webrtc-rdp-settings';
+	static onsettingsupdate = null;
+
+	/**
+	 * @param {DeviceSettings} deviceInfo 
+	 */
+	static addPeerDevice(deviceInfo) {
+		let devices = this.getPeerDevices();
+		let idx = devices.findIndex(d => d.roomId == deviceInfo.roomId);
+		if (idx < 0) {
+			devices.push(deviceInfo);
+		} else {
+			devices[idx] = deviceInfo;
+		}
+		this._save(devices);
+	}
+
+	/**
+	 * @returns {DeviceSettings[]}
+	 */
+	static getPeerDevices() {
+		try {
+			let s = localStorage.getItem(this.settingsKey);
+			if (!s) { return []; }
+			let settings = JSON.parse(s);
+			return settings.version == 2 ? (settings.devices || []) : [settings];
+		} catch {
+			// ignore
+		}
+		return [];
+	}
+
+	/**
+	 * @param {DeviceSettings} deviceInfo 
+	 */
+	static removePeerDevice(deviceInfo) {
+		let devices = this.getPeerDevices();
+		let filtered = devices.filter(d => d.roomId != deviceInfo.roomId);
+		if (filtered.length != devices.length) {
+			this._save(filtered);
+		}
+	}
+
+	static clear() {
+		this._save([]);
+	}
+
+	static _save(devices) {
+		if (devices.length == 0) {
+			localStorage.removeItem(this.settingsKey);
+		} else if (devices.length == 1) {
+			// compat
+			devices[0].version = 1;
+			localStorage.setItem(this.settingsKey, JSON.stringify(devices[0]));
+		} else {
+			localStorage.setItem(this.settingsKey, JSON.stringify({ devices: devices, version: 2 }));
+		}
+		this.onsettingsupdate && this.onsettingsupdate(devices);
+	}
+}
 
 class BaseConnection {
+	/**
+	 * @param {string} signalingUrl 
+	 * @param {string} roomId 
+	 */
 	constructor(signalingUrl, roomId) {
 		this.signalingUrl = signalingUrl;
 		this.roomId = roomId;
 		this.conn = null;
+		/** @type {MediaStream} */
+		this.mediaStream = null;
+		this.stopTracksOnDisposed = true;
+		/** @type {Record<string, DataChannelInfo>} */
 		this.dataChannels = {};
 		this.onstatechange = null;
 		this.state = "disconnected";
 		this.options = Object.assign({}, Ayame.defaultOptions);
 		this.options.video = Object.assign({}, this.options.video);
 		this.options.audio = Object.assign({}, this.options.audio);
+		this.reconnectWaitMs = -1;
+		this.connectTimeoutMs = -1;
+	}
+	async connect() {
+		if (this.conn || this.state == 'disposed') {
+			throw 'invalid operation';
+		}
+		await this.setupConnection().connect(this.mediaStream, null);
 	}
 	setupConnection() {
 		console.log("connecting..." + this.signalingUrl + " " + this.roomId);
-		this.updateStaet("connecting");
+		this.updateState("connecting");
+		if (this.connectTimeoutMs > 0) {
+			this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
+		}
 
-		let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, debugLog);
+		let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
 		conn.on('open', async (e) => {
-			console.log('open', e, this.dataChannels);
 			for (let c of Object.keys(this.dataChannels)) {
-				console.log("add dataChannel", c);
+				console.log("add dataChannel: " + c);
 				this.handleDataChannel(await conn.createDataChannel(c));
 			}
-			this.updateStaet("ready");
+			this.updateState("waiting");
 		});
 		conn.on('connect', (e) => {
-			this.updateStaet("connected");
+			clearTimeout(this._connectTimer);
+			this.updateState("connected");
 		});
 		conn.on('datachannel', (channel) => {
-			console.log('datachannel', channel);
+			console.log('datachannel', channel?.label);
 			this.handleDataChannel(channel);
 		});
 		conn.on('disconnect', (e) => {
+			let oldState = this.state;
 			this.conn = null;
-			console.log(e);
-			this.disconnect();
+			this.disconnect(e.reason);
+			if ((oldState == "connected" || oldState == "waiting") && this.reconnectWaitMs >= 0) {
+				setTimeout(() => this.connect(), this.reconnectWaitMs);
+			}
 		});
 		return conn;
 	}
-	disconnect() {
-		this.updateStaet("disconnected");
-		this.conn?.on('disconnect', () => { });
-		this.conn?.disconnect();
-		this.conn = null;
-		this.dataChannels = {};
-	}
-	updateStaet(s) {
-		if (s != this.state) {
-			console.log(this.roomId, s);
-			this.onstatechange && this.onstatechange(s);
-			this.state = s;
+	disconnect(reason = null) {
+		console.log('disconnect', reason);
+		clearTimeout(this._connectTimer);
+		this.updateState("disconnected");
+		if (this.conn) {
+			this.conn.on('disconnect', () => { });
+			this.conn.disconnect();
+			this.conn.stream = null;
+			this.conn = null;
+		}
+		for (let c of Object.values(this.dataChannels)) {
+			c.ch = null;
 		}
 	}
+	dispose() {
+		this.disconnect();
+		this.updateState("disposed");
+		this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
+		this.mediaStream = null;
+	}
+	/**
+	 * @param {string} s
+	 */
+	updateState(s) {
+		if (s != this.state) {
+			console.log(this.roomId, s);
+			let oldState = this.state;
+			this.state = s;
+			this.onstatechange && this.onstatechange(s, oldState);
+		}
+	}
+	/**
+	 * @param {RTCDataChannel} ch
+	 */
 	handleDataChannel(ch) {
 		if (!ch) return;
 		let c = this.dataChannels[ch.label];
-		console.log(c);
 		if (c && !c.ch) {
 			c.ch = ch;
-			ch.onmessage = c.onmessage;
-			ch.onopen = c.onopen;
+			ch.onmessage = c.onmessage?.bind(ch, ch);
+			// NOTE: dataChannel.onclose = null in Ayame web sdk.
+			ch.addEventListener('open', c.onopen?.bind(ch, ch));
+			ch.addEventListener('close', c.onclose?.bind(ch, ch));
 		}
-	}
-	sendData(chLabel, data) {
-		this.dataChannels[chLabel].ch?.send(data);
 	}
 }
 
 class PlayerConnection extends BaseConnection {
+	/**
+	 * @param {string} signalingUrl 
+	 * @param {string} roomId 
+	 * @param {HTMLVideoElement} videoEl 
+	 */
 	constructor(signalingUrl, roomId, videoEl) {
 		super(signalingUrl, roomId);
 		this.options.video.direction = 'recvonly';
 		this.options.audio.direction = 'recvonly';
 		this.videoEl = videoEl;
-		this.mediaStream = null;
+		this.dataChannels['controlEvent'] = {
+			onmessage: (ch, ev) => {
+				let msg = JSON.parse(ev.data);
+				if (msg.type == 'redirect') {
+					if (msg.roomId) {
+						this.disconnect();
+						this.roomId = msg.roomId;
+						this.connect();
+					}
+				}
+			}
+		};
 	}
-
-	async connect() {
-		if (this.conn) {
-			return;
-		}
-
-        this.dataChannels['controlEvent'] = {
-            onmessage: (ev) => {
-                let msg = JSON.parse(ev.data);
-                if (msg.type == 'redirect') {
-                    if (msg.roomId) {
-                        this.disconnect();
-                        this.roomId = msg.roomId;
-                        this.connect();
-                    }
-                }
-            }
-        };
-
-		const conn = this.setupConnection();
+	setupConnection() {
+		let conn = super.setupConnection();
 		conn.on('addstream', (ev) => {
 			this.mediaStream = ev.stream;
 			this.videoEl.srcObject = ev.stream;
 		});
-		conn.on('disconnect', async (e) => {
-			console.log(e);
-			this.conn = null;
-			this.disconnect();
-			if (this.videoEl.srcObject == this.mediaStream) {
-				this.videoEl.srcObject = null;
-			}
-		});
-		await conn.connect(this.mediaStream, null);
+		return conn;
+	}
+	disconnect(reason = null) {
+		if (this.videoEl.srcObject == this.mediaStream) {
+			this.videoEl.srcObject = null;
+		}
+		super.disconnect(reason);
 	}
 	sendMouseEvent(action, x, y, button) {
-		this.sendData('controlEvent', JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
+		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
 	}
 	sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
-		this.sendData('controlEvent', JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
 	}
 }
 
-
 AFRAME.registerComponent('webrtc-rdp', {
 	schema: {
-		signalingUrl: { default: "wss://ayame-labo.shiguredo.jp/signaling" },
-		settingName: { default: "" },
+		signalingUrl: { default: "wss://ayame-labo.shiguredo.app/signaling" },
+		settingIndex: { default: -1 },
 		roomId: { default: "" },
 		settingUrl: { default: "/webrtc-rdp/" },
 		loadingSrc: { default: "#rdp-loading" },
@@ -204,7 +299,18 @@ AFRAME.registerComponent('webrtc-rdp', {
 		screenEl.focus();
 
 		this._byName("connectButton").addEventListener('click', ev => this.connect());
-		this._byName("roomSelect").addEventListener('change', ev => { this.roomIdSuffix = ev.detail.value; console.log("room:", ev.detail); });
+		this._byName("roomNext").addEventListener('click', ev => {
+			let n = this.data.settingIndex + 1;
+			if (Settings.getPeerDevices()[n]) {
+				this.el.setAttribute('webrtc-rdp', { settingIndex: n });
+			}
+		});
+		this._byName("roomPrev").addEventListener('click', ev => {
+			let n = this.data.settingIndex - 1;
+			if (Settings.getPeerDevices()[n]) {
+				this.el.setAttribute('webrtc-rdp', { settingIndex: n });
+			}
+		});
 
 		let showControls = visible => {
 			visible = visible || this.playerConn == null;
@@ -227,18 +333,21 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 		});
 	},
+	update() {
+		let d = Settings.getPeerDevices()[this.data.settingIndex];
+		if (d) {
+            let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, 50) + '...';
+			this._byName("roomName").setAttribute('value', name);
+		}
+	},
 	connect() {
 		this.disconnect();
 		this._updateScreen(this.data.loadingSrc, false);
 		let data = this.data;
 		let settings = { signalingKey: null, roomId: data.roomId };
-		if (data.settingName) {
-			let s = localStorage.getItem(data.settingName);
-			settings = null;
-			if (s) {
-				try { settings = JSON.parse(s); } catch { }
-			}
-			if (!settings || settings.version != 1) {
+		if (data.settingIndex >= 0) {
+			settings = Settings.getPeerDevices()[data.settingIndex];
+			if (!settings) {
 				this.el.sceneEl.exitVR();
 				window.open(data.settingUrl, '_blank');
 				return;

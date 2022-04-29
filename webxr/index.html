@@ -17,16 +17,15 @@
       <img id="rdp-loading" src="images/loading.png" crossorigin="anonymous" />
     </a-assets>
 
-    <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingName:webrtc-rdp-settings" xyresize="" scale='0.2 0.2 0.2' width="8" height="4.5" position="0 1.5 -1.5" xycontainer="direction:column">
+    <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingIndex:0" xyresize="" scale='0.2 0.2 0.2' width="8" height="4.5" position="0 1.5 -1.5" xycontainer="direction:column">
       <a-video name="screen" class="collidable" width="8" height="4.5" src="#rdp-loading" material="npot:true;shader: flat;"></a-video>
       <a-entity xyrect="height:0">
-        <a-xycontainer class="control" width="4.5" height="0.7" position="0 -0.4 0.05" direction="row" spacing="0.1" justify-items="center">
-        <a-entity xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:4.5;height:0.7" position="0 0 -0.02" material="color:#444; opacity:0.8"></a-entity>
-          <a-xylabel width="1.2" height="0.6"  value="Stream:"></a-xylabel>
-          <a-xyselect name="roomSelect" width="0.8" height="0.6" toggle="true" select="0" values="1,2,3,4,5"></a-xyselect>
-          <a-xybutton name="connectButton" width="1.8" height="0.6">
-            <a-xylabel width="1.5" height="0.5" value="Connect"></a-xylabel>
-          </a-xybutton>
+        <a-xycontainer class="control" width="5" height="0.7" position="0 -0.4 0.05" direction="row" spacing="0.1" justify-items="center">
+        <a-entity xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:5;height:0.7" position="0 0 -0.02" material="color:#444; opacity:0.8"></a-entity>
+          <a-xybutton name="roomPrev" width="0.5" height="0.6" label="&lt;"></a-xybutton>
+          <a-xylabel name="roomName" width="2.0" height="0.6"  value="room"></a-xylabel>
+          <a-xybutton name="roomNext" width="0.5" height="0.6" label="&gt;"></a-xybutton>
+          <a-xybutton name="connectButton" width="1.4" height="0.6" label="Connect"></a-xybutton>
         </a-xycontainer>
       </a-entity>
     </a-xywindow>
