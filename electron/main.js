@@ -81,7 +81,6 @@ class InputManager {
     } else {
       console.log("invalid target. use primary display.", target);
       this.moveMouse_display(screen.getPrimaryDisplay(), x, y);
-      return;
     }
     let buttonStr = ['left', 'middle', 'right'][button] || 'left';
     if (action == 'click') {
