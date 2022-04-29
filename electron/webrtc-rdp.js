@@ -3,7 +3,7 @@
 
 // Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
-const sendSignalingKey = (location.host.includes("binzume.") || globalThis.RDP);
+const sendSignalingKey = location.host.includes("binzume.") || globalThis.RDP != undefined;
 const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
 const roomIdPrefix = sendSignalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
 const roomIdPinPrefix = sendSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
@@ -25,7 +25,12 @@ class Settings {
      */
     static addPeerDevice(deviceInfo) {
         let devices = this.getPeerDevices();
-        devices.push(deviceInfo);
+        let idx = devices.findIndex(d => d.roomId == deviceInfo.roomId);
+        if (idx < 0) {
+            devices.push(deviceInfo);
+        } else {
+            devices[idx] = deviceInfo;
+        }
         this._save(devices);
     }
 
@@ -700,6 +705,38 @@ class ElectronStreamProvider {
 }
 
 
+function initPairing() {
+    let pairing = new PairingConnection(signalingUrl);
+    document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
+        document.getElementById("pairing").style.display = "block";
+        document.getElementById("pinDisplayBox").style.display = "none";
+        document.getElementById("pinInputBox").style.display = "block";
+    });
+    document.getElementById('inputPin').addEventListener('click', (ev) => {
+        document.getElementById("pinDisplayBox").style.display = "none";
+        document.getElementById("pinInputBox").style.display = "block";
+    });
+    document.getElementById('sendPinButton').addEventListener('click', (ev) => {
+        let pin = /** @type {HTMLInputElement} */(document.getElementById("pinInput")).value.trim();
+        if (pairing.validatePin(pin)) {
+            document.getElementById("pinInputBox").style.display = "none";
+            pairing.sendPin(pin);
+        }
+    });
+    document.querySelector('#generatePin').addEventListener('click', async (ev) => {
+        document.getElementById("pinDisplayBox").style.display = "block";
+        document.getElementById("pinInputBox").style.display = "none";
+        pairing.onstatechange = (state) => {
+            if (state == "connected" || state == "waiting") {
+                document.getElementById("pin").innerText = pairing.pin;
+            } else {
+                document.getElementById("pin").innerText = "......";
+            }
+        };
+        pairing.startPairing();
+    });
+}
+
 window.addEventListener('DOMContentLoaded', (ev) => {
     /**
      * @param {string} tag 
@@ -774,13 +811,14 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let updateDeviceList = (/** @type {DeviceSettings[]} */ deviceSettings) => {
         let parentEl = document.getElementById('devices');
         let exstings = Object.keys(devices);
+        console.log(devices);
         let current = deviceSettings.map(d => d.roomId);
         for (let d of exstings) {
             if (!current.includes(d)) {
                 devices[d].manager.clear();
                 devices[d].el.parentNode.removeChild(devices[d].el);
+                delete devices[d];
             }
-            delete devices[d];
         }
         for (let d of deviceSettings) {
             if (exstings.includes(d.roomId)) {
@@ -816,7 +854,17 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     );
                 };
             };
-            let el = mkEl('div', [mkEl('span', [name, removeButtonEl], { title: d.userAgent }), listEl]);
+            let titleEl = mkEl('span', name, {
+                title: d.userAgent,
+                ondblclick: (_ev) => {
+                    let n = prompt("Change name", name);
+                    if (n) {
+                        titleEl.innerText = d.name = name = n;
+                        Settings.addPeerDevice(d);
+                    }
+                }
+            });
+            let el = mkEl('div', [mkEl('span', [titleEl, removeButtonEl]), listEl]);
             let ds = { el: el, manager: cm };
             if (addStream) {
                 let streamListEl = mkEl('ul', [], { className: 'streamlist' });
@@ -936,35 +984,5 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.body.classList.remove('player');
     });
 
-    // Pairing
-    let pairing = new PairingConnection(signalingUrl);
-    document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
-        document.getElementById("pairing").style.display = "block";
-        document.getElementById("pinDisplayBox").style.display = "none";
-        document.getElementById("pinInputBox").style.display = "block";
-    });
-    document.getElementById('inputPin').addEventListener('click', (ev) => {
-        document.getElementById("pinDisplayBox").style.display = "none";
-        document.getElementById("pinInputBox").style.display = "block";
-    });
-    document.getElementById('sendPinButton').addEventListener('click', (ev) => {
-        let pin = /** @type {HTMLInputElement} */(document.getElementById("pinInput")).value.trim();
-        if (pairing.validatePin(pin)) {
-            document.getElementById("pinInputBox").style.display = "none";
-            pairing.sendPin(pin);
-        }
-    });
-    document.querySelector('#generatePin').addEventListener('click', async (ev) => {
-        document.getElementById("pinDisplayBox").style.display = "block";
-        document.getElementById("pinInputBox").style.display = "none";
-        pairing.onstatechange = (state) => {
-            if (state == "connected" || state == "waiting") {
-                document.getElementById("pin").innerText = pairing.pin;
-            } else {
-                document.getElementById("pin").innerText = "......";
-            }
-        };
-        pairing.startPairing();
-    });
-
+    initPairing();
 }, { once: true });
