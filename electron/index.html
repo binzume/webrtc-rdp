@@ -8,10 +8,10 @@
 </head>
 
 <body>
-  <div class="browser noplayer">
-    <button id="clearSettingsButton">Reset Settings</button>
-    <button id="addDeviceButton" style="display:none">Add Device</button>
-    <h1>WebRTC Remote Desktop</h1>
+  <div class="noplayer">
+    <button id="addDeviceButton">Add Device</button>
+    <button class="browser" id="clearSettingsButton">Reset Settings</button>
+    <h1 class="browser">WebRTC Remote Desktop</h1>
   </div>
 
   <div id="pairing" style="display:none;text-align: center;">
@@ -32,9 +32,8 @@
     </div>
   </div>
 
-  <div id="devices" class="noplayer">
-    <span class="nodevices-msg">No devices</span>
-  </div>
+  <div id="devices" class="noplayer"></div>
+  <div id="streams" class="noplayer streamlist"></div>
 
   <div id="publishOrPlay" style="display:none;text-align: center">
     <div id="player">
@@ -56,7 +55,7 @@
   </div>
 
   <div class="browser noplayer" style="margin: 30pt 0;text-align: center">
-    <div><a href="https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp">WebXR</a></div>
+    <div><a href="https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp">WebXR Client</a></div>
     <div><a href="https://github.com/binzume/webrtc-rdp/blob/master/README.md">README.md</a></div>
   </div>
 

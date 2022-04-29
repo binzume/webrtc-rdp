@@ -2,16 +2,15 @@
 'use strict';
 
 // Please replace with your id and signalingKey!
-const signalingUrl = 'wss://ayame-labo.shiguredo.jp/signaling';
+const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
 const sendSignalingKey = (location.host.includes("binzume.") || globalThis.RDP);
 const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
 const roomIdPrefix = sendSignalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
 const roomIdPinPrefix = sendSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
-const enableStreamSelectScreen = true;
 
 /** 
  * @typedef {{onmessage?: ((ch:RTCDataChannel,ev:any) => void), onopen?: ((ch:RTCDataChannel, ev:Event) => void), onclose?: ((ch:RTCDataChannel, ev:Event) => void), ch?:RTCDataChannel }} DataChannelInfo
- * @typedef {{name?: string, roomId: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
+ * @typedef {{name?: string, roomId: string, publishRoomId: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
  * @typedef {{id: string, name: string, hasAudio?: boolean}} StreamSpec
  * @typedef {{conn:PublisherConnection, name: string, id:number, opaque: any, permanent: boolean}} ConnectionInfo
  * @typedef {{startStream:((cm:ConnectionManager, spec:StreamSpec, permanent:boolean)=>Promise<ConnectionInfo>), getStreams?:(()=>Promise<StreamSpec[]>)}} StreamProvider
@@ -20,36 +19,57 @@ const enableStreamSelectScreen = true;
 class Settings {
     static settingsKey = 'webrtc-rdp-settings';
     static onsettingsupdate = null;
-    static settingsVersion = 1;
 
     /**
      * @param {DeviceSettings} deviceInfo 
      */
     static addPeerDevice(deviceInfo) {
-        // TODO: multiple devices
-        deviceInfo.version = this.settingsVersion;
-        localStorage.setItem(this.settingsKey, JSON.stringify(deviceInfo));
-        this.onsettingsupdate && this.onsettingsupdate([deviceInfo]);
+        let devices = this.getPeerDevices();
+        devices.push(deviceInfo);
+        this._save(devices);
     }
 
     /**
      * @returns {DeviceSettings[]}
      */
     static getPeerDevices() {
-        let s = localStorage.getItem(this.settingsKey);
-        return s ? [JSON.parse(s)] : [];
+        try {
+            let s = localStorage.getItem(this.settingsKey);
+            if (!s) { return []; }
+            let settings = JSON.parse(s);
+            return settings.version == 2 ? (settings.devices || []) : [settings];
+        } catch {
+            // ignore
+        }
+        return [];
     }
 
     /**
      * @param {DeviceSettings} deviceInfo 
      */
     static removePeerDevice(deviceInfo) {
-        this.clear();
+        let devices = this.getPeerDevices();
+        let filtered = devices.filter(d => d.roomId != deviceInfo.roomId);
+        if (filtered.length != devices.length) {
+            this._save(filtered);
+        }
     }
 
     static clear() {
-        localStorage.removeItem(this.settingsKey);
-        this.onsettingsupdate && this.onsettingsupdate([]);
+        this._save([]);
+    }
+
+    static _save(devices) {
+        if (devices.length == 0) {
+            localStorage.removeItem(this.settingsKey);
+        } else if (devices.length == 1) {
+            // compat
+            devices[0].version = 1;
+            localStorage.setItem(this.settingsKey, JSON.stringify(devices[0]));
+        } else {
+            localStorage.setItem(this.settingsKey, JSON.stringify({ devices: devices, version: 2 }));
+        }
+        this.onsettingsupdate && this.onsettingsupdate(devices);
     }
 }
 
@@ -64,6 +84,7 @@ class BaseConnection {
         this.conn = null;
         /** @type {MediaStream} */
         this.mediaStream = null;
+        this.stopTracksOnDisposed = true;
         /** @type {Record<string, DataChannelInfo>} */
         this.dataChannels = {};
         this.onstatechange = null;
@@ -130,7 +151,7 @@ class BaseConnection {
     dispose() {
         this.disconnect();
         this.updateState("disposed");
-        this.mediaStream?.getTracks().forEach(t => t.stop());
+        this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
         this.mediaStream = null;
     }
     /**
@@ -191,7 +212,7 @@ class PairingConnection extends BaseConnection {
                 console.log('ch msg', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    Settings.addPeerDevice({ roomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({ roomId: msg.roomId, publishRoomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
                     this.disconnect();
                 }
             },
@@ -219,7 +240,7 @@ class PairingConnection extends BaseConnection {
                     let roomId = roomIdPrefix + this._generateSecret(16);
                     let token = this._generateSecret(16);
                     ch.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
-                    Settings.addPeerDevice({ roomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({ roomId: roomId, publishRoomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
                     this.disconnect();
                 }
             },
@@ -324,8 +345,9 @@ class ConnectionManager {
      */
     addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true, opaque = null) {
         let id = this._genId();
+        let roomId = this.settings.remoteRoomId || this.settings.roomId;
         name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-        let conn = new PublisherConnection(signalingUrl, this.settings.roomId + "." + id, mediaStream, messageHandler);
+        let conn = new PublisherConnection(signalingUrl, roomId + "." + id, mediaStream, messageHandler);
         conn.options.signalingKey = this.settings.signalingKey;
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
@@ -373,7 +395,8 @@ class StreamSelectScreen {
         canvas.height = 400;
         this.streamProvider = streamProvider;
         this.ctx = canvas.getContext('2d');
-        this.streams = [];
+        /** @type {StreamSpec[]} */
+        this._streams = [];
         this.buttonSpec = { width: 520, height: 20, font: 'bold 18px sans-serif', color: 'black' };
         this.buttonLayout = { top: 24, left: (canvas.width - this.buttonSpec.width) / 2, spacing: 6 };
         this._attachCount = 0;
@@ -381,19 +404,20 @@ class StreamSelectScreen {
     }
     async update() {
         let streams = await this.streamProvider.getStreams();
-        this.streams = streams;
+        this._streams = streams;
         let canvas = this.canvasEl;
         let ctx = this.ctx;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'black';
         ctx.font = 'normal 18px sans-serif';
         ctx.textBaseline = 'top';
         ctx.textAlign = 'center';
+        ctx.fillStyle = 'black';
+        ctx.fillText('Available screens (Click to select)', canvas.width / 2, 0);
         if (streams.length == 0) {
-            ctx.fillText('No Available Screen', canvas.width / 2, 100);
+            ctx.fillStyle = 'red';
+            ctx.fillText('No Available Screen', canvas.width / 2, canvas.height / 2);
         }
-        ctx.fillText('Available streams (Click to select)', canvas.width / 2, 0);
 
         let button = this.buttonSpec, layout = this.buttonLayout;
         ctx.font = button.font;
@@ -415,7 +439,7 @@ class StreamSelectScreen {
         let self = this;
         let mediaStream = this.canvasEl.captureStream(1);
         let dataChannelInfo = {
-            onopen(_ch, _ev) { self.attach(); },
+            onopen(ch, _ev) { self.attach(cm, ch); },
             onclose(_ch, _ev) { self.detach(); },
             onmessage(ch, ev) { self._handleMessage(cm, ch, JSON.parse(ev.data)) },
         };
@@ -436,26 +460,32 @@ class StreamSelectScreen {
                 return;
             }
             let n = Math.floor((y - layout.top) / (this.buttonSpec.height + layout.spacing));
-            if (this.streams[n]) {
-                let c = await this.streamProvider.startStream(cm, this.streams[n], false);
-                if (c) {
-                    ch.send(JSON.stringify({ type: 'redirect', 'roomId': c.conn.roomId }));
-                }
+            if (this._streams[n]) {
+                this._redirect(cm, ch, n);
             }
         }
     }
-    attach() {
-        if (this._attachCount == 0) {
-            this._updateTimer = setInterval(() => this.update(), 1000);
-            this.update();
-        }
+    async attach(cm, ch) {
         this._attachCount++;
+        if (this._attachCount == 1) {
+            this._updateTimer = setInterval(() => this.update(), 1000);
+            await this.update();
+        }
+        if (this._streams.length == 1) {
+            this._redirect(cm, ch, 0);
+        }
     }
     detach() {
         this._attachCount--;
         if (this._attachCount == 0) {
             clearInterval(this._updateTimer);
             this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
+        }
+    }
+    async _redirect(cm, ch, n) {
+        let c = await this.streamProvider.startStream(cm, this._streams[n], false);
+        if (c) {
+            ch.send(JSON.stringify({ type: 'redirect', 'roomId': c.conn.roomId }));
         }
     }
 }
@@ -491,8 +521,8 @@ class StreamRedirector {
 
 class BrowserStreamProvider {
     constructor() {
-        /** @type {WebSocket} */
-        this.inputProxySoc = null;
+        /** @type {(ev: Record<string,any>) => void} */
+        this.sendInputEvent = null;
         /** @type {Record<string, StreamProvider>} */
         this.pseudoStreams = {};
         /** @type {{spec:StreamSpec, isCamera: boolean, mediaStream: MediaStream}[]} */
@@ -502,13 +532,14 @@ class BrowserStreamProvider {
 
     /**
      * @param {boolean} camera 
+     * @param {boolean} registerStream
      * @returns {Promise<StreamSpec>}
      */
-    async addMediaStream(camera = false) {
+    async addMediaStream(camera = false, registerStream = true) {
         let mediaStream = await (camera ? navigator.mediaDevices.getUserMedia({ audio: true, video: true }) : navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }));
         let name = mediaStream.getVideoTracks()[0]?.label || "?";
         let s = { spec: { id: 'BrowserStreamProvider_' + (++this._idSeq), name: name }, mediaStream: mediaStream, isCamera: camera };
-        this._streams.push(s);
+        registerStream && this._streams.push(s);
         return s.spec;
     }
 
@@ -530,18 +561,29 @@ class BrowserStreamProvider {
             return null;
         }
         let target = stream.isCamera ? null : this._getTarget(stream.mediaStream);
+        let self = this;
         let messageHandler = {
             onmessage(_ch, ev) {
                 let msg = JSON.parse(ev.data);
-                if (this.inputProxySoc?.readyState == 1 && (msg.type == 'mouse' || msg.type == 'key') && target) {
+                if (self.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key') && target) {
                     msg.target = target;
-                    this.inputProxySoc.send(JSON.stringify(msg));
+                    self.sendInputEvent(msg);
                 } else {
                     console.log("drop:", msg);
                 }
             },
         };
-        return cm.addStream(stream.mediaStream, messageHandler, null, true, permanent);
+        let c = cm.addStream(stream.mediaStream, messageHandler, null, true, permanent);
+        c.conn.stopTracksOnDisposed = false; // Reuse media streams.
+        return c;
+    }
+
+    /**
+     * @param {StreamSpec} s 
+     */
+    remove(s) {
+        this._streams.filter(ss => ss.spec.id == s.id).forEach(ss => ss.mediaStream.getTracks().forEach(t => t.stop()));
+        this._streams = this._streams.filter(ss => ss.spec.id != s.id);
     }
 
     _getTarget(mediaStream) {
@@ -663,7 +705,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
      * @param {string} tag 
      * @param {string[] | string | Node[] | any} children 
      * @param {object | function} attrs
-     * @returns {Element}
+     * @returns {HTMLElement}
      */
     let mkEl = (tag, children, attrs) => {
         let el = document.createElement(tag);
@@ -680,57 +722,53 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
 
     // Publisher
-    let updateConnectionState = (manager, c, el) => {
-        if (c.conn.state == 'disposed') {
-            el.parentNode?.removeChild(el);
-            return;
-        }
-        if (c.conn.state == 'disconnected' && !c.permanent) {
-            c.conn.dispose();
-            return;
-        }
-        el.innerText = '';
-        el.append(
-            mkEl('span', "stream" + c.id + " : " + c.name, { className: 'streamName', title: c.conn.roomId }),
-            mkEl('span', c.conn.state, { className: 'connectionstate connectionstate_' + c.conn.state }),
-            mkEl('button', 'x', (btn) =>
-                btn.addEventListener('click', (ev) => manager.removeStream(c.id))
-            ),
-        );
-    };
+    /** @typedef {{manager: ConnectionManager, streamProvider?: StreamProvider&Record<string,any>}} DeviceState */
+    /** @type {(DeviceState)=>any} */
+    let addInitStreams = null;
+    /** @type {(d:DeviceState, listEl: HTMLElement, isCamera:boolean)=>any} */
+    let addStream = null;
 
-    let browserStreamProvider = isElectronApp ? null : new BrowserStreamProvider();
-    let connectInputProxy = () => {
-        browserStreamProvider.inputProxySoc?.close();
-        /** @type {HTMLInputElement} */
-        let inputProxyUrlEl = document.querySelector("#inputProxyUrl");
-        if (inputProxyUrlEl?.value) {
-            browserStreamProvider.inputProxySoc = new WebSocket(inputProxyUrlEl.value);
-        }
-    };
-    let addStream = async (cm, camera) => {
-        let spec = await browserStreamProvider.addMediaStream(camera);
-        await browserStreamProvider.startStream(cm, spec);
-    };
-    document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
-
-    let addInitStreams = async ( /** @type {ConnectionManager} */cm) => {
-        if (!isElectronApp) {
-            return;
-        }
-        let streamProvider = new ElectronStreamProvider();
-        if (enableStreamSelectScreen) {
+    if (isElectronApp) {
+        addInitStreams = async (d) => {
+            let streamProvider = d.streamProvider = new ElectronStreamProvider();
             streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(streamProvider);
             streamProvider.pseudoStreams['_redirector'] = new StreamRedirector(streamProvider, { id: '_selector', name: 'selector' });
             // await streamProvider.startStream(cm, { id: '_redirector', name: 'redirector' }, true);
-            await streamProvider.startStream(cm, { id: '_selector', name: 'selector' }, true);
-        } else {
-            streamProvider.streamTypes = ['screen'];
-            for (let stream of await streamProvider.getStreams()) {
-                await streamProvider.startStream(cm, stream, true);
+            await streamProvider.startStream(d.manager, { id: '_selector', name: 'selector' }, true);
+        };
+    } else {
+        /** @type {WebSocket} */
+        let inputProxySoc = null;
+        let initStreamProvider = async (d) => {
+            let streamProvider = d.streamProvider = new BrowserStreamProvider();
+            streamProvider.sendInputEvent = (msg) => {
+                if (inputProxySoc?.readyState == 1) {
+                    inputProxySoc.send(JSON.stringify(msg));
+                }
+            };
+            d.streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(d.streamProvider);
+            await d.streamProvider.startStream(d.manager, { id: '_selector', name: 'selector' }, true);
+        };
+        addStream = async (d, listEl, camera) => {
+            if (!d.streamProvider) { initStreamProvider(d); }
+            let stream = await d.streamProvider.addMediaStream(camera);
+            let el = mkEl('li', ["(", mkEl('span', stream.name, { className: 'streamName', title: stream.id }), ")",
+                mkEl('button', 'x', (btn) =>
+                    btn.addEventListener('click', (ev) => { d.streamProvider.remove(stream); el.parentElement.removeChild(el); })
+                )]);
+            listEl.append(el);
+        };
+
+        let connectInputProxy = () => {
+            inputProxySoc?.close();
+            /** @type {HTMLInputElement} */
+            let inputProxyUrlEl = document.querySelector("#inputProxyUrl");
+            if (inputProxyUrlEl?.value) {
+                inputProxySoc = new WebSocket(inputProxyUrlEl.value);
             }
-        }
-    };
+        };
+        document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
+    }
 
     let devices = {};
     let updateDeviceList = (/** @type {DeviceSettings[]} */ deviceSettings) => {
@@ -759,15 +797,35 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             cm.onadded = (c) => {
                 let el = mkEl('li');
                 listEl.appendChild(el);
-                c.conn.onstatechange = () => updateConnectionState(cm, c, el);
+                c.conn.onstatechange = () => {
+                    if (c.conn.state == 'disposed') {
+                        el.parentNode?.removeChild(el);
+                        return;
+                    }
+                    if (c.conn.state == 'disconnected' && !c.permanent) {
+                        c.conn.dispose();
+                        return;
+                    }
+                    el.innerText = '';
+                    el.append(
+                        mkEl('span', c.id + " : " + c.name, { className: 'streamName', title: c.conn.roomId }),
+                        mkEl('span', c.conn.state, { className: 'connectionstate connectionstate_' + c.conn.state }),
+                        mkEl('button', 'x', (btn) =>
+                            btn.addEventListener('click', (ev) => cm.removeStream(c.id))
+                        ),
+                    );
+                };
             };
             let el = mkEl('div', [mkEl('span', [name, removeButtonEl], { title: d.userAgent }), listEl]);
-            if (browserStreamProvider) {
+            let ds = { el: el, manager: cm };
+            if (addStream) {
+                let streamListEl = mkEl('ul', [], { className: 'streamlist' });
                 el.append(
+                    streamListEl,
                     mkEl('button', 'Share Desktop', (el) =>
-                        el.addEventListener('click', (ev) => addStream(cm, false))),
+                        el.addEventListener('click', (ev) => addStream(ds, streamListEl, false))),
                     mkEl('button', 'Share Camera', (el) =>
-                        el.addEventListener('click', (ev) => addStream(cm, true))),
+                        el.addEventListener('click', (ev) => addStream(ds, streamListEl, true))),
                     mkEl('button', 'Player', (el) =>
                         el.addEventListener('click', (ev) => {
                             document.body.classList.add('player');
@@ -777,8 +835,8 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 );
             }
             parentEl.append(el);
-            devices[d.roomId] = { el: el, manager: cm };
-            addInitStreams(cm);
+            devices[d.roomId] = ds;
+            addInitStreams && addInitStreams(ds);
         }
         if (deviceSettings.length == 0) {
             parentEl.classList.add('nodevices');
@@ -809,7 +867,8 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         videoEl.style.display = "none";
         document.getElementById('connectingBox').style.display = "block";
         if (currentDevice) {
-            player = new PlayerConnection(signalingUrl, currentDevice.roomId + "." + currentStreamId, videoEl);
+            let roomId = currentDevice.roomId;
+            player = new PlayerConnection(signalingUrl, roomId + "." + currentStreamId, videoEl);
             player.onstatechange = (state) => {
                 if (state == "connected") {
                     videoEl.style.display = "block";
@@ -878,13 +937,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     });
 
     // Pairing
+    let pairing = new PairingConnection(signalingUrl);
     document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
         document.getElementById("pairing").style.display = "block";
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
     });
-
-    let pairing = new PairingConnection(signalingUrl);
     document.getElementById('inputPin').addEventListener('click', (ev) => {
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
