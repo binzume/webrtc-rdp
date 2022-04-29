@@ -6,7 +6,9 @@ WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップ
 
 最近の Chrome や Edge で動くはずです．VRモードは Oculus Quest 2 の Oculus Browser で動作確認しています．
 
-Demo URL: https://binzume.github.io/webrtc-rdp/
+Demo URL:
+- https://binzume.github.io/webrtc-rdp/
+- https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp (WebXR)
 
 ## Usage
 
@@ -20,7 +22,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 ## Mouse/Keyboard
 
-ブラウザ上からは，マウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意してください．
+ブラウザ上からは，マウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，下のElectron App版を使ってください．
 
 どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動してください．
 以下のような構成です．(キー入力は実装途中です)
@@ -42,7 +44,7 @@ Demo URL: https://binzume.github.io/webrtc-rdp/
 
 ## Electron App (Experimental)
 
-Requires: Node.js and Python
+Chromeを起動していなくても単体で動くホストアプリケーションです．マウスやキーボードも使えます．
 
 ```
 cd electron
@@ -50,6 +52,9 @@ npm install
 npx electron-rebuild
 npm start
 ```
+
+毎回コマンドラインから起動するのが面倒な場合は， `npm run build-win` で実行ファイルがビルドできます．
+MacOSでも動く気がしますが，Windowsでのみで動作確認しています．
 
 ## Security
 
