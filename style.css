@@ -1,28 +1,85 @@
 body {
-	margin: 0;
-	padding: 0;
+    margin: 0;
+    padding: 0;
     background-color: white;
 }
 
-
-#pairng {
+h1 {
     text-align: center;
 }
 
-#pinInputBox, #pinDisplayBox {
-    width: 450pt;
+body.standalone .browser {
+    display: none;
+}
+
+body.standalone :not(input):not(textarea) {
+    user-select: none;
+    cursor: default;
+}
+
+body.player .noplayer {
+    display: none;
+}
+
+#player {
+    display: none;
+    text-align: center;
+}
+
+body.player #player {
+    display: block;
+}
+
+#player-menu {
+    height: 18pt;
+}
+
+#screen {
+    display: none;
+    width: 100%;
+    height: calc(100vh - 20pt);
+    padding: 0;
+    margin: 0;
+    border: none;
+    background-color: #ccc;
+}
+
+#content {
     margin: 0 auto;
-    padding: 10pt;
+    max-width: 400pt;
+}
+
+#pairing {
+    margin: 12pt auto;
+    padding: 8pt 0;
     border: 2px solid #ccc;
     border-radius: 4pt;
+    text-align: center;
 }
 
-#pairng .pin {
+#pairing .pin {
     font-size: 40pt;
 }
 
-#pairng .pin * {
+#pairing .pin * {
     font-size: 40pt;
+}
+
+#pairing h2 {
+    font-size: 20pt;
+    text-align: center;
+    margin: 0 0 10pt 0;
+    padding: 0;
+}
+
+#pairing input::-webkit-outer-spin-button,
+#pairing input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#pairing input[type=number] {
+    -moz-appearance: textfield;
 }
 
 #publishOrPlay {
@@ -33,28 +90,52 @@ body {
     touch-action: none;
 }
 
-#streams {
-    max-width: 400pt;
-    margin: 0 auto;
-}
-
-#streams li {
-	list-style-type: none;
+.streamlist li {
+    list-style-type: none;
     text-align: left;
 }
 
-#streams .connectionstate {
+.streamlist .connectionstate {
     margin: 0 10pt;
 }
 
-#streams .connectionstate_ready {
+.streamlist .connectionstate_ready {
     color: green;
 }
 
-#streams .connectionstate_connected {
+.streamlist .connectionstate_connected {
     color: red;
 }
 
-#streams .connectionstate_disconnected {
+.streamlist .connectionstate_disconnected {
     color: darkred;
+}
+
+#devices>div {
+    border: solid 2px #ccc;
+    min-height: 50pt;
+    border-radius: 6pt;
+    margin-bottom: 8pt;
+}
+
+#devices>div>span {
+    display: block;
+    border-top-left-radius: 4pt;
+    border-top-right-radius: 4pt;
+    width: 100%;
+    background-color: #abf;
+    font-weight: bold;
+    margin-bottom: 4pt;
+}
+
+#devices>div>span>button {
+    float: right;
+}
+
+.nodevices-msg {
+    display: none;
+}
+
+.nodevices .nodevices-msg {
+    display: block;
 }
