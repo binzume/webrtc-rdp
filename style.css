@@ -17,6 +17,11 @@ body.standalone :not(input):not(textarea) {
     cursor: default;
 }
 
+body.standalone .selectable {
+    user-select: all !important;
+    cursor: auto !important;
+}
+
 body.player .noplayer {
     display: none;
 }
@@ -115,6 +120,7 @@ body.player #player {
     border: solid 2px #ccc;
     min-height: 50pt;
     border-radius: 6pt;
+    padding-bottom: 0 5pt;
     margin-bottom: 8pt;
 }
 
