@@ -44,8 +44,12 @@ body.player #player {
     background-color: #ccc;
 }
 
-#pairing {
+#content {
+    margin: 0 auto;
     max-width: 400pt;
+}
+
+#pairing {
     margin: 12pt auto;
     padding: 8pt 0;
     border: 2px solid #ccc;
@@ -70,11 +74,12 @@ body.player #player {
 
 #pairing input::-webkit-outer-spin-button,
 #pairing input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+    -webkit-appearance: none;
+    margin: 0;
 }
+
 #pairing input[type=number] {
-  -moz-appearance: textfield;
+    -moz-appearance: textfield;
 }
 
 #publishOrPlay {
@@ -83,11 +88,6 @@ body.player #player {
 
 #player video {
     touch-action: none;
-}
-
-.streamlist {
-    max-width: 400pt;
-    margin: 0 auto;
 }
 
 .streamlist li {
@@ -111,15 +111,11 @@ body.player #player {
     color: darkred;
 }
 
-#devices {
-    max-width: 400pt;
-    margin: 0 auto;
-}
-
 #devices>div {
     border: solid 2px #ccc;
     min-height: 50pt;
     border-radius: 6pt;
+    margin-bottom: 8pt;
 }
 
 #devices>div>span {

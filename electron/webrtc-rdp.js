@@ -10,7 +10,7 @@ const roomIdPinPrefix = sendSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin
 
 /** 
  * @typedef {{onmessage?: ((ch:RTCDataChannel,ev:any) => void), onopen?: ((ch:RTCDataChannel, ev:Event) => void), onclose?: ((ch:RTCDataChannel, ev:Event) => void), ch?:RTCDataChannel }} DataChannelInfo
- * @typedef {{name?: string, roomId: string, publishRoomId: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
+ * @typedef {{name?: string, roomId: string, publishRoomId?: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
  * @typedef {{id: string, name: string, hasAudio?: boolean}} StreamSpec
  * @typedef {{conn:PublisherConnection, name: string, id:number, opaque: any, permanent: boolean}} ConnectionInfo
  * @typedef {{startStream:((cm:ConnectionManager, spec:StreamSpec, permanent:boolean)=>Promise<ConnectionInfo>), getStreams?:(()=>Promise<StreamSpec[]>)}} StreamProvider
@@ -130,31 +130,30 @@ class BaseConnection {
             this.handleDataChannel(channel);
         });
         conn.on('disconnect', (e) => {
-            let oldState = this.state;
             this.conn = null;
             this.disconnect(e.reason);
-            if ((oldState == "connected" || oldState == "waiting") && this.reconnectWaitMs >= 0) {
-                setTimeout(() => this.connect(), this.reconnectWaitMs);
-            }
         });
         return conn;
     }
     disconnect(reason = null) {
         console.log('disconnect', reason);
         clearTimeout(this._connectTimer);
-        this.updateState("disconnected");
         if (this.conn) {
             this.conn.on('disconnect', () => { });
             this.conn.disconnect();
             this.conn.stream = null;
             this.conn = null;
         }
+        if (reason != 'dispose' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
+            setTimeout(() => this.connect(), this.reconnectWaitMs);
+        }
         for (let c of Object.values(this.dataChannels)) {
             c.ch = null;
         }
+        this.updateState("disconnected");
     }
     dispose() {
-        this.disconnect();
+        this.disconnect('dispose');
         this.updateState("disposed");
         this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
         this.mediaStream = null;
@@ -163,7 +162,7 @@ class BaseConnection {
      * @param {string} s
      */
     updateState(s) {
-        if (s != this.state) {
+        if (s != this.state && this.state != 'disposed') {
             console.log(this.roomId, s);
             let oldState = this.state;
             this.state = s;
@@ -197,6 +196,7 @@ class PairingConnection extends BaseConnection {
         this.userAgent = navigator.userAgent;
         this.options.signalingKey = signalingKey;
         this.pinTimeoutSec = 3600;
+        this.isolatedRoom = true;
         this.version = 1;
     }
 
@@ -205,24 +205,27 @@ class PairingConnection extends BaseConnection {
     }
 
     async startPairing() {
-        this.pin = this._generatePin();
+        let pin = this.pin = this._generatePin();
         this.disconnect();
         this.connectTimeoutMs = this.pinTimeoutSec * 1000;
+        let publishRoomId = this.isolatedRoom ? roomIdPrefix + this._generateSecret(16) : null;
 
         this.dataChannels['secretExchange'] = {
             onopen: (ch, ev) => {
-                ch.send(JSON.stringify({ type: "hello", userAgent: this.userAgent, version: this.version }));
+                ch.send(JSON.stringify({ type: "hello", roomId: publishRoomId, signalingKey: publishRoomId ? signalingKey : null, userAgent: this.userAgent, version: this.version }));
             },
             onmessage: (_ch, ev) => {
                 console.log('ch msg', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    Settings.addPeerDevice({ roomId: msg.roomId, publishRoomId: msg.roomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({ roomId: msg.roomId, publishRoomId: publishRoomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
                     this.disconnect();
                 }
             },
         };
+        this.roomId = roomIdPinPrefix + pin;
         await this.connect();
+        return pin;
     }
 
     async sendPin(pin) {
@@ -230,7 +233,6 @@ class PairingConnection extends BaseConnection {
             throw "invalid pin";
         }
         this.disconnect();
-        this.pin = pin;
         this.connectTimeoutMs = 10000;
 
         this.dataChannels['secretExchange'] = {
@@ -242,20 +244,17 @@ class PairingConnection extends BaseConnection {
                         console.log('Unsupported version: ' + msg.version);
                         this.disconnect();
                     }
-                    let roomId = roomIdPrefix + this._generateSecret(16);
+                    let publishRoomId = roomIdPrefix + this._generateSecret(16);
+                    let roomId = msg.roomId || publishRoomId
                     let token = this._generateSecret(16);
-                    ch.send(JSON.stringify({ type: "credential", roomId: roomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
-                    Settings.addPeerDevice({ roomId: roomId, publishRoomId: roomId, signalingKey: signalingKey, token: token, userAgent: msg.userAgent });
+                    ch.send(JSON.stringify({ type: "credential", roomId: publishRoomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
+                    Settings.addPeerDevice({ roomId: roomId, publishRoomId: msg.roomId ? publishRoomId : null, signalingKey: msg.signalingKey || signalingKey, token: token, userAgent: msg.userAgent });
                     this.disconnect();
                 }
             },
         };
+        this.roomId = roomIdPinPrefix + pin;
         await this.connect();
-    }
-
-    async connect() {
-        this.roomId = roomIdPinPrefix + this.pin;
-        await this.setupConnection().connect(null);
     }
 
     _generatePin() {
@@ -333,6 +332,7 @@ class PlayerConnection extends BaseConnection {
 
 class ConnectionManager {
     constructor(settings) {
+        /**  @type {DeviceSettings} */
         this.settings = settings;
         this.onadded = null;
         /**  @type {ConnectionInfo[]} */
@@ -350,7 +350,7 @@ class ConnectionManager {
      */
     addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true, opaque = null) {
         let id = this._genId();
-        let roomId = this.settings.remoteRoomId || this.settings.roomId;
+        let roomId = this.settings.publishRoomId || this.settings.roomId;
         name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
         let conn = new PublisherConnection(signalingUrl, roomId + "." + id, mediaStream, messageHandler);
         conn.options.signalingKey = this.settings.signalingKey;
@@ -377,14 +377,8 @@ class ConnectionManager {
         while (this._connections.some(c => c.id == n)) n++;
         return n;
     }
-    connectAll() {
-        this._connections.forEach((c) => c.conn.connect());
-    }
-    disconnectAll() {
-        this._connections.forEach((c) => c.conn.disconnect());
-    }
-    clear() {
-        this.disconnectAll();
+    dispose() {
+        this._connections.forEach((c) => c.conn.dispose());
         this._connections = [];
     }
 }
@@ -726,14 +720,14 @@ function initPairing() {
     document.querySelector('#generatePin').addEventListener('click', async (ev) => {
         document.getElementById("pinDisplayBox").style.display = "block";
         document.getElementById("pinInputBox").style.display = "none";
+        let pinEl = document.getElementById("pin");
+        pinEl.innerText = "......";
+        pinEl.innerText = await pairing.startPairing();
         pairing.onstatechange = (state) => {
-            if (state == "connected" || state == "waiting") {
-                document.getElementById("pin").innerText = pairing.pin;
-            } else {
-                document.getElementById("pin").innerText = "......";
+            if (state == "disconnected") {
+                pinEl.innerText = "......";
             }
         };
-        pairing.startPairing();
     });
 }
 
@@ -755,23 +749,23 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     if (isElectronApp) {
         document.body.classList.add('standalone');
     }
-    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => confirm('CLear all settiungs?') && Settings.clear());
+    document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => confirm('CLear all settings?') && Settings.clear());
 
 
     // Publisher
-    /** @typedef {{manager: ConnectionManager, streamProvider?: StreamProvider&Record<string,any>}} DeviceState */
-    /** @type {(DeviceState)=>any} */
-    let addInitStreams = null;
-    /** @type {(d:DeviceState, listEl: HTMLElement, isCamera:boolean)=>any} */
+    /** @typedef {{cm: ConnectionManager, streamProvider?: StreamProvider&Record<string,any>, el: HTMLElement}} DeviceState */
+    /** @type {(ds: DeviceState)=>any} */
+    let initStreams = (_) => { };
+    /** @type {(ds: DeviceState, listEl: HTMLElement, isCamera:boolean)=>any} */
     let addStream = null;
 
     if (isElectronApp) {
-        addInitStreams = async (d) => {
+        initStreams = async (d) => {
             let streamProvider = d.streamProvider = new ElectronStreamProvider();
             streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(streamProvider);
             streamProvider.pseudoStreams['_redirector'] = new StreamRedirector(streamProvider, { id: '_selector', name: 'selector' });
-            // await streamProvider.startStream(cm, { id: '_redirector', name: 'redirector' }, true);
-            await streamProvider.startStream(d.manager, { id: '_selector', name: 'selector' }, true);
+            // await streamProvider.startStream(d.cm, { id: '_redirector', name: 'redirector' }, true);
+            await streamProvider.startStream(d.cm, { id: '_selector', name: 'selector' }, true);
         };
     } else {
         /** @type {WebSocket} */
@@ -784,15 +778,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 }
             };
             d.streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(d.streamProvider);
-            await d.streamProvider.startStream(d.manager, { id: '_selector', name: 'selector' }, true);
+            await d.streamProvider.startStream(d.cm, { id: '_selector', name: 'selector' }, true);
         };
         addStream = async (d, listEl, camera) => {
             if (!d.streamProvider) { initStreamProvider(d); }
             let stream = await d.streamProvider.addMediaStream(camera);
-            let el = mkEl('li', ["(", mkEl('span', stream.name, { className: 'streamName', title: stream.id }), ")",
-                mkEl('button', 'x', (btn) =>
-                    btn.addEventListener('click', (ev) => { d.streamProvider.remove(stream); el.parentElement.removeChild(el); })
-                )]);
+            let el = mkEl('li', [
+                "(", mkEl('span', stream.name, { className: 'streamName', title: stream.id }), ")",
+                mkEl('button', 'x', { onclick: (_) => { d.streamProvider.remove(stream); el.parentElement.removeChild(el); } })
+            ]);
             listEl.append(el);
         };
 
@@ -807,15 +801,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
     }
 
+    /** @type {Record<string, DeviceState} */
     let devices = {};
     let updateDeviceList = (/** @type {DeviceSettings[]} */ deviceSettings) => {
         let parentEl = document.getElementById('devices');
         let exstings = Object.keys(devices);
-        console.log(devices);
         let current = deviceSettings.map(d => d.roomId);
         for (let d of exstings) {
             if (!current.includes(d)) {
-                devices[d].manager.clear();
+                devices[d].cm.dispose();
                 devices[d].el.parentNode.removeChild(devices[d].el);
                 delete devices[d];
             }
@@ -827,11 +821,9 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, 50) + '...';
             let cm = new ConnectionManager(d);
             let listEl = mkEl('ul', [], { className: 'streamlist' });
-            let removeButtonEl = mkEl('button', 'x', (el) =>
-                el.addEventListener('click', (ev) => {
-                    confirm(`Remove ${name} ?`) && Settings.removePeerDevice(d);
-                })
-            );
+            let removeButtonEl = mkEl('button', 'x', {
+                onclick: (ev) => confirm(`Remove ${name} ?`) && Settings.removePeerDevice(d)
+            });
             cm.onadded = (c) => {
                 let el = mkEl('li');
                 listEl.appendChild(el);
@@ -848,15 +840,15 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     el.append(
                         mkEl('span', c.id + " : " + c.name, { className: 'streamName', title: c.conn.roomId }),
                         mkEl('span', c.conn.state, { className: 'connectionstate connectionstate_' + c.conn.state }),
-                        mkEl('button', 'x', (btn) =>
-                            btn.addEventListener('click', (ev) => cm.removeStream(c.id))
-                        ),
                     );
+                    if (c.conn.state == 'connected') {
+                        el.append(mkEl('button', 'x', { onclick: (_) => c.conn.disconnect() }));
+                    }
                 };
             };
             let titleEl = mkEl('span', name, {
                 title: d.userAgent,
-                ondblclick: (_ev) => {
+                ondblclick: (_) => {
                     let n = prompt("Change name", name);
                     if (n) {
                         titleEl.innerText = d.name = name = n;
@@ -865,26 +857,25 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 }
             });
             let el = mkEl('div', [mkEl('span', [titleEl, removeButtonEl]), listEl]);
-            let ds = { el: el, manager: cm };
+            let ds = { el: el, cm: cm };
             if (addStream) {
                 let streamListEl = mkEl('ul', [], { className: 'streamlist' });
                 el.append(
                     streamListEl,
-                    mkEl('button', 'Share Desktop', (el) =>
-                        el.addEventListener('click', (ev) => addStream(ds, streamListEl, false))),
-                    mkEl('button', 'Share Camera', (el) =>
-                        el.addEventListener('click', (ev) => addStream(ds, streamListEl, true))),
-                    mkEl('button', 'Player', (el) =>
-                        el.addEventListener('click', (ev) => {
-                            document.body.classList.add('player');
-                            currentDevice = d;
-                            playStream();
-                        })),
+                    mkEl('button', 'Share Desktop', { onclick: (_) => addStream(ds, streamListEl, false) }),
+                    mkEl('button', 'Share Camera', { onclick: (_) => addStream(ds, streamListEl, true) }),
                 );
             }
+            el.append(mkEl('button', 'Open Remote Desktop', {
+                onclick: (_ev) => {
+                    document.body.classList.add('player');
+                    currentDevice = d;
+                    playStream();
+                }
+            }));
             parentEl.append(el);
             devices[d.roomId] = ds;
-            addInitStreams && addInitStreams(ds);
+            initStreams(ds);
         }
         if (deviceSettings.length == 0) {
             parentEl.classList.add('nodevices');
