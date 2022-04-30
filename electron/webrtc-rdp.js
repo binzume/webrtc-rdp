@@ -3,14 +3,14 @@
 
 // Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
-const sendSignalingKey = location.host.includes("binzume.") || globalThis.RDP != undefined;
+const sendSignalingKey = location.host.includes('binzume.') || globalThis.RDP != undefined || true;
 const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
-const roomIdPrefix = sendSignalingKey ? "binzume@rdp-room-" : "binzume-rdp-room-";
-const roomIdPinPrefix = sendSignalingKey ? "binzume@rdp-pin-" : "binzume-rdp-pin-";
+const roomIdPrefix = sendSignalingKey ? 'binzume@rdp-room-' : 'binzume-rdp-room-';
+const roomIdPinPrefix = sendSignalingKey ? 'binzume@rdp-pin-' : 'binzume-rdp-pin-';
 
 /** 
  * @typedef {{onmessage?: ((ch:RTCDataChannel,ev:any) => void), onopen?: ((ch:RTCDataChannel, ev:Event) => void), onclose?: ((ch:RTCDataChannel, ev:Event) => void), ch?:RTCDataChannel }} DataChannelInfo
- * @typedef {{name?: string, roomId: string, publishRoomId?: string, userAgent: string, token:string, signalingKey:string, version?:number}} DeviceSettings
+ * @typedef {{name?: string, roomId: string, publishRoomId?: string, userAgent: string, token:string, signalingKey:string}} DeviceSettings
  * @typedef {{id: string, name: string, hasAudio?: boolean}} StreamSpec
  * @typedef {{conn:PublisherConnection, name: string, id:number, opaque: any, permanent: boolean}} ConnectionInfo
  * @typedef {{startStream:((cm:ConnectionManager, spec:StreamSpec, permanent:boolean)=>Promise<ConnectionInfo>), getStreams?:(()=>Promise<StreamSpec[]>)}} StreamProvider
@@ -43,10 +43,10 @@ class Settings {
             if (!s) { return []; }
             let settings = JSON.parse(s);
             return settings.version == 2 ? (settings.devices || []) : [settings];
-        } catch {
-            // ignore
+        } catch (e) {
+            console.log(e);
+            return [];
         }
-        return [];
     }
 
     /**
@@ -68,9 +68,7 @@ class Settings {
         if (devices.length == 0) {
             localStorage.removeItem(this.settingsKey);
         } else if (devices.length == 1) {
-            // compat
-            devices[0].version = 1;
-            localStorage.setItem(this.settingsKey, JSON.stringify(devices[0]));
+            localStorage.setItem(this.settingsKey, JSON.stringify(devices[0])); // compat
         } else {
             localStorage.setItem(this.settingsKey, JSON.stringify({ devices: devices, version: 2 }));
         }
@@ -81,9 +79,10 @@ class Settings {
 class BaseConnection {
     /**
      * @param {string} signalingUrl 
+     * @param {string|null} signalingKey 
      * @param {string} roomId 
      */
-    constructor(signalingUrl, roomId) {
+    constructor(signalingUrl, signalingKey, roomId) {
         this.signalingUrl = signalingUrl;
         this.roomId = roomId;
         this.conn = null;
@@ -93,10 +92,12 @@ class BaseConnection {
         /** @type {Record<string, DataChannelInfo>} */
         this.dataChannels = {};
         this.onstatechange = null;
-        this.state = "disconnected";
+        /** @type {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} */
+        this.state = 'disconnected';
         this.options = Object.assign({}, Ayame.defaultOptions);
         this.options.video = Object.assign({}, this.options.video);
         this.options.audio = Object.assign({}, this.options.audio);
+        this.options.signalingKey = signalingKey;
         this.reconnectWaitMs = -1;
         this.connectTimeoutMs = -1;
     }
@@ -108,7 +109,7 @@ class BaseConnection {
     }
     setupConnection() {
         console.log("connecting..." + this.signalingUrl + " " + this.roomId);
-        this.updateState("connecting");
+        this.updateState('connecting');
         if (this.connectTimeoutMs > 0) {
             this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
         }
@@ -116,17 +117,15 @@ class BaseConnection {
         let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
         conn.on('open', async (e) => {
             for (let c of Object.keys(this.dataChannels)) {
-                console.log("add dataChannel: " + c);
                 this.handleDataChannel(await conn.createDataChannel(c));
             }
-            this.updateState("waiting");
+            this.updateState('waiting');
         });
         conn.on('connect', (e) => {
             clearTimeout(this._connectTimer);
-            this.updateState("connected");
+            this.updateState('connected');
         });
         conn.on('datachannel', (channel) => {
-            console.log('datachannel', channel?.label);
             this.handleDataChannel(channel);
         });
         conn.on('disconnect', (e) => {
@@ -150,16 +149,16 @@ class BaseConnection {
         for (let c of Object.values(this.dataChannels)) {
             c.ch = null;
         }
-        this.updateState("disconnected");
+        this.updateState('disconnected');
     }
     dispose() {
         this.disconnect('dispose');
-        this.updateState("disposed");
+        this.updateState('disposed');
         this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
         this.mediaStream = null;
     }
     /**
-     * @param {string} s
+     * @param {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} s
      */
     updateState(s) {
         if (s != this.state && this.state != 'disposed') {
@@ -176,11 +175,12 @@ class BaseConnection {
         if (!ch) return;
         let c = this.dataChannels[ch.label];
         if (c && !c.ch) {
+            console.log('datachannel', ch.label);
             c.ch = ch;
             ch.onmessage = c.onmessage?.bind(ch, ch);
             // NOTE: dataChannel.onclose = null in Ayame web sdk.
-            ch.addEventListener('open', c.onopen?.bind(ch, ch));
-            ch.addEventListener('close', c.onclose?.bind(ch, ch));
+            c.onopen && ch.addEventListener('open', c.onopen.bind(ch, ch));
+            c.onclose && ch.addEventListener('close', c.onclose.bind(ch, ch));
         }
     }
 }
@@ -189,25 +189,23 @@ class PairingConnection extends BaseConnection {
     /**
      * @param {string} signalingUrl 
      */
-    constructor(signalingUrl) {
-        super(signalingUrl, null);
+    constructor(signalingUrl, signalingKey = null) {
+        super(signalingUrl, signalingKey, '');
         this.pinLength = 6;
-        this.pin = null;
         this.userAgent = navigator.userAgent;
-        this.options.signalingKey = signalingKey;
-        this.pinTimeoutSec = 3600;
+        this.pinTimeoutMs = 3600000;
         this.isolatedRoom = true;
         this.version = 1;
     }
 
     validatePin(pin) {
-        return pin && pin.length >= this.pinLength;
+        return pin && pin.length == this.pinLength;
     }
 
     async startPairing() {
-        let pin = this.pin = this._generatePin();
         this.disconnect();
-        this.connectTimeoutMs = this.pinTimeoutSec * 1000;
+        this.connectTimeoutMs = this.pinTimeoutMs;
+        let pin = this._generatePin();
         let publishRoomId = this.isolatedRoom ? roomIdPrefix + this._generateSecret(16) : null;
 
         this.dataChannels['secretExchange'] = {
@@ -215,7 +213,7 @@ class PairingConnection extends BaseConnection {
                 ch.send(JSON.stringify({ type: "hello", roomId: publishRoomId, signalingKey: publishRoomId ? signalingKey : null, userAgent: this.userAgent, version: this.version }));
             },
             onmessage: (_ch, ev) => {
-                console.log('ch msg', ev.data);
+                console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
                     Settings.addPeerDevice({ roomId: msg.roomId, publishRoomId: publishRoomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
@@ -237,7 +235,7 @@ class PairingConnection extends BaseConnection {
 
         this.dataChannels['secretExchange'] = {
             onmessage: (ch, ev) => {
-                console.log('ch msg', ev.data);
+                console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'hello') {
                     if (msg.version && msg.version != this.version) {
@@ -274,8 +272,8 @@ class PublisherConnection extends BaseConnection {
      * @param {MediaStream} mediaStream 
      * @param {DataChannelInfo} messageHandler 
      */
-    constructor(signalingUrl, roomId, mediaStream, messageHandler = null) {
-        super(signalingUrl, roomId);
+    constructor(signalingUrl, signalingKey, roomId, mediaStream, messageHandler = null) {
+        super(signalingUrl, signalingKey, roomId);
         this.options.video.direction = 'sendonly';
         this.options.audio.direction = 'sendonly';
         this.mediaStream = mediaStream;
@@ -290,20 +288,18 @@ class PlayerConnection extends BaseConnection {
      * @param {string} roomId 
      * @param {HTMLVideoElement} videoEl 
      */
-    constructor(signalingUrl, roomId, videoEl) {
-        super(signalingUrl, roomId);
+    constructor(signalingUrl, signalingKey, roomId, videoEl) {
+        super(signalingUrl, signalingKey, roomId);
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
         this.dataChannels['controlEvent'] = {
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
-                if (msg.type == 'redirect') {
-                    if (msg.roomId) {
-                        this.disconnect();
-                        this.roomId = msg.roomId;
-                        this.connect();
-                    }
+                if (msg.type == 'redirect' && msg.roomId) {
+                    this.disconnect();
+                    this.roomId = msg.roomId;
+                    this.connect();
                 }
             }
         };
@@ -352,8 +348,7 @@ class ConnectionManager {
         let id = this._genId();
         let roomId = this.settings.publishRoomId || this.settings.roomId;
         name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-        let conn = new PublisherConnection(signalingUrl, roomId + "." + id, mediaStream, messageHandler);
-        conn.options.signalingKey = this.settings.signalingKey;
+        let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + "." + id, mediaStream, messageHandler);
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
 
@@ -438,8 +433,8 @@ class StreamSelectScreen {
         let self = this;
         let mediaStream = this.canvasEl.captureStream(1);
         let dataChannelInfo = {
-            onopen(ch, _ev) { self.attach(cm, ch); },
-            onclose(_ch, _ev) { self.detach(); },
+            onopen(ch, _ev) { self._attach(cm, ch); },
+            onclose(_ch, _ev) { self._detach(); },
             onmessage(ch, ev) { self._handleMessage(cm, ch, JSON.parse(ev.data)) },
         };
         return await cm.addStream(mediaStream, dataChannelInfo, s.name, true, permanent);
@@ -452,7 +447,6 @@ class StreamSelectScreen {
      */
     async _handleMessage(cm, ch, msg) {
         if (msg.type == 'mouse' && (msg.action == 'click' || msg.action == 'up')) {
-            this.update();
             let x = msg.x * this.canvasEl.width, y = msg.y * this.canvasEl.height;
             let layout = this.buttonLayout;
             if (x < layout.left || x > layout.left + this.buttonSpec.width || y < layout.top) {
@@ -464,7 +458,7 @@ class StreamSelectScreen {
             }
         }
     }
-    async attach(cm, ch) {
+    async _attach(cm, ch) {
         this._attachCount++;
         if (this._attachCount == 1) {
             this._updateTimer = setInterval(() => this.update(), 1000);
@@ -474,7 +468,7 @@ class StreamSelectScreen {
             this._redirect(cm, ch, 0);
         }
     }
-    detach() {
+    _detach() {
         this._attachCount--;
         if (this._attachCount == 0) {
             clearInterval(this._updateTimer);
@@ -505,12 +499,10 @@ class StreamRedirector {
      * @param {boolean} permanent 
      */
     async startStream(cm, s, permanent) {
-        let self = this;
         let dataChannelInfo = {
-            ch: null,
-            async onopen(ch, ev) {
+            onopen: async (ch, ev) => {
                 // TODO: timeout
-                let c = await self.streamProvider.startStream(cm, self.target, false);
+                let c = await this.streamProvider.startStream(cm, this.target, false);
                 ch.send(JSON.stringify({ type: 'redirect', 'roomId': c.conn.roomId }));
             }
         };
@@ -520,7 +512,7 @@ class StreamRedirector {
 
 class BrowserStreamProvider {
     constructor() {
-        /** @type {(ev: Record<string,any>) => void} */
+        /** @type {(target: any, ev: Record<string,any>) => void} */
         this.sendInputEvent = null;
         /** @type {Record<string, StreamProvider>} */
         this.pseudoStreams = {};
@@ -564,11 +556,8 @@ class BrowserStreamProvider {
         let messageHandler = {
             onmessage(_ch, ev) {
                 let msg = JSON.parse(ev.data);
-                if (self.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key') && target) {
-                    msg.target = target;
-                    self.sendInputEvent(msg);
-                } else {
-                    console.log("drop:", msg);
+                if (self.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key')) {
+                    self.sendInputEvent(target, msg);
                 }
             },
         };
@@ -700,8 +689,9 @@ class ElectronStreamProvider {
 
 
 function initPairing() {
-    let pairing = new PairingConnection(signalingUrl);
+    let pairing = new PairingConnection(signalingUrl, signalingKey);
     document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
+        pairing.disconnect();
         document.getElementById("pairing").style.display = "block";
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
@@ -772,8 +762,9 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         let inputProxySoc = null;
         let initStreamProvider = async (d) => {
             let streamProvider = d.streamProvider = new BrowserStreamProvider();
-            streamProvider.sendInputEvent = (msg) => {
-                if (inputProxySoc?.readyState == 1) {
+            streamProvider.sendInputEvent = (target, msg) => {
+                if (target && inputProxySoc?.readyState == 1) {
+                    msg.target = target;
                     inputProxySoc.send(JSON.stringify(msg));
                 }
             };
@@ -868,7 +859,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             }
             el.append(mkEl('button', 'Open Remote Desktop', {
                 onclick: (_ev) => {
-                    document.body.classList.add('player');
                     currentDevice = d;
                     playStream();
                 }
@@ -904,30 +894,30 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let playStream = () => {
         player?.disconnect();
         videoEl.style.display = "none";
-        document.getElementById('connectingBox').style.display = "block";
         if (currentDevice) {
+            document.getElementById('connectingBox').style.display = "block";
+            document.body.classList.add('player');
             let roomId = currentDevice.roomId;
-            player = new PlayerConnection(signalingUrl, roomId + "." + currentStreamId, videoEl);
+            player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId + "." + currentStreamId, videoEl);
             player.onstatechange = (state) => {
                 if (state == "connected") {
                     videoEl.style.display = "block";
                     document.getElementById('connectingBox').style.display = "none";
                 }
             };
-            player.options.signalingKey = currentDevice.signalingKey;
             player.connect();
         }
     };
     let dragging = false;
     let dragTimer = null;
     let sendMouse = (action, ev) => {
-        if (player?.state == "connected") {
+        if (player?.state == 'connected') {
             let rect = videoEl.getBoundingClientRect();
             let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
             let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
             let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
-            if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = "move";
-            if (action == 'click' && dragging) action = "up";
+            if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = 'move';
+            if (action == 'click' && dragging) action = 'up';
             player.sendMouseEvent(action, x, y, ev.button);
             ev.preventDefault();
         }
@@ -945,7 +935,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     videoEl.addEventListener('pointerup', (ev) => {
         videoEl.releasePointerCapture(ev.pointerId);
         clearTimeout(dragTimer);
-        console.log('pointerup', dragging);
         if (dragging) {
             dragging = false;
             sendMouse('up', ev);
@@ -962,7 +951,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         }
     });
     window.addEventListener('keydown', (ev) => {
-        if (player?.state == "connected") {
+        if (player?.state == 'connected') {
             player.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
             ev.preventDefault();
         }
@@ -971,7 +960,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
     document.querySelector('#closePlayerButton').addEventListener('click', (ev) => {
         player?.disconnect();
-        videoEl.style.display = "none";
         document.body.classList.remove('player');
     });
 
