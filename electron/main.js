@@ -7,6 +7,8 @@ const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferen
 const user32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'GetWindowRect': ["bool", ["int32", "pointer"]],
   'SetForegroundWindow': ["bool", ["int32"]],
+  'WindowFromPoint': ["int32", ["int64"]], // TODO; struct POINT
+  'GetAncestor': ["int32", ["int32", "int32"]],
 });
 
 function GetWindowRect(hWnd) {
@@ -30,6 +32,14 @@ function SetForegroundWindow(hWnd) {
     return false;
   }
   return user32.SetForegroundWindow(hWnd);
+}
+
+function WindowFromPoint(x, y) {
+  if (!user32) {
+    return 0;
+  }
+  let hWnd = user32.WindowFromPoint(Math.floor(x) + (Math.floor(y) * (2 ** 32)));
+  return hWnd != 0 ? user32.GetAncestor(hWnd, 2) : 0;
 }
 
 class InputManager {
@@ -75,6 +85,7 @@ class InputManager {
     let windowId = this._getWindowId(target);
     let d = this.displays[target.display_id];
     if (windowId) {
+      action != 'move' && SetForegroundWindow(windowId);
       this.moveMouse_window(windowId, x, y);
     } else if (d) {
       this.moveMouse_display(d, x, y);
@@ -92,16 +103,10 @@ class InputManager {
     }
   }
   moveMouse_display(d, x, y) {
-    let sx = d.bounds.x + d.bounds.width * x, sy = d.bounds.y + d.bounds.height * y;
-    if (process.platform == 'win32') {
-      let p = screen.dipToScreenPoint({ x: sx, y: sy });
-      robot.moveMouse(p.x, p.y);
-    } else {
-      robot.moveMouse(sx, sy);
-    }
+    let p = this._toScreenPoint(d, x, y);
+    robot.moveMouse(p.x, p.y);
   }
   moveMouse_window(windowId, x, y) {
-    SetForegroundWindow(windowId);
     let rect = GetWindowRect(windowId);
     if (rect) {
       let sx = rect.left + (rect.right - rect.left) * x;
@@ -115,7 +120,9 @@ class InputManager {
     let windowId = this._getWindowId(target);
     windowId && SetForegroundWindow(windowId);
 
-    if (key == 'KanaMode' || key == 'HiraganaKatakana') {
+    if (key == 'Unidentified') {
+      return;
+    } else if (key == 'KanaMode' || key == 'HiraganaKatakana') {
       // Robot.js doesn't support KanaMode key.
       key = ' ';
       modifiers = ['control'];
@@ -138,6 +145,33 @@ class InputManager {
     } else {
       robot.keyToggle(key, action, modifiers);
     }
+  }
+  streamFromPoint(target, x, y) {
+    let d = this.displays[target.display_id];
+    if (d == null) {
+      console.log('invalid target: ', target);
+      return null;
+    }
+    let p = this._toScreenPoint(d, x, y);
+    let hWnd = WindowFromPoint(p.x, p.y);
+    if (!hWnd) {
+      return null;
+    }
+    let rect = GetWindowRect(hWnd);
+    let r = null;
+    if (rect) {
+      let p0 = this._fromScreenPoint(d, rect.left, rect.top);
+      let p1 = this._fromScreenPoint(d, rect.right, rect.bottom);
+      r = { x: p0.x, y: p0.y, width: p1.x - p0.x, height: p1.y - p0.y };
+    }
+    return { id: `window:${hWnd}:0`, rect: r, rawRect: rect };
+  }
+  _toScreenPoint(d, x, y) {
+    let p = { x: d.bounds.x + d.bounds.width * x, y: d.bounds.y + d.bounds.height * y };
+    return process.platform == 'win32' ? screen.dipToScreenPoint(p) : p;
+  }
+  _fromScreenPoint(d, x, y) {
+    return { x: d.bounds.x + d.bounds.width * x, y: d.bounds.y + d.bounds.height * y }; // TODO: dip
   }
 }
 
@@ -216,6 +250,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('sendKey', async (event, keyMessage) => {
     return inputManager.sendKey(keyMessage);
+  });
+  ipcMain.handle('streamFromPoint', async (event, params) => {
+    return inputManager.streamFromPoint(params.target, params.x, params.y);
   });
 
   app.on('activate', () => {

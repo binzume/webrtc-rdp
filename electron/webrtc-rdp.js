@@ -665,22 +665,22 @@ class ElectronStreamProvider {
             this.lastMouseMoveTime = now;
             await RDP.sendMouse({ target: s, action: msg.action, button: msg.button, x: msg.x, y: msg.y });
         } else if (msg.type == 'key') {
-            let modifiers = [];
+            let modifiers = msg.modifiers || [];
             msg.ctrl && modifiers.push('control');
             msg.alt && modifiers.push('alt');
             msg.shift && modifiers.push('shift');
             await RDP.sendKey({ target: s, action: msg.action, key: msg.key, modifiers: modifiers });
-        } else if (msg.type == 'getstreamlist') {
+        } else if (msg.type == 'rpc' && msg.name == 'getStreams') {
             let streams = await this.getStreams();
-            ch.send(JSON.stringify({ 'type': 'streams', 'streams': streams.map(s => ({ id: s.id, name: s.name })) }));
-        } else if (msg.type == 'play') {
+            ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: streams.map(s => ({ id: s.id, name: s.name })) }));
+        } else if (msg.type == 'rpc' && msg.name == 'streamFromPoint') {
+            let si = await RDP.streamFromPoint({ target: s, x: msg.x, y: msg.y });
+            ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: si }));
+        } else if (msg.type == 'rpc' && msg.name == 'play') {
             let streams = await this.getStreams();
-            let s = streams.find(s => s.id == msg.streamId);
-            if (!s) {
-                return;
-            }
+            let s = streams.find(s => s.id == msg.streamId) || { id: msg.streamId, name: 'unknown' };
             let c = await this.startStream(cm, s);
-            ch.send(JSON.stringify({ type: 'redirect', 'roomId': c?.conn.roomId }));
+            ch.send(JSON.stringify({ type: msg.redirect ? 'redirect' : 'rpcResult', reqId: msg.reqId, roomId: c?.conn.roomId }));
         } else {
             console.log("drop:", msg);
         }
