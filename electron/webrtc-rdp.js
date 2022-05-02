@@ -293,6 +293,7 @@ class PlayerConnection extends BaseConnection {
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
+        this.rpcResultHandler = null;
         this.dataChannels['controlEvent'] = {
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
@@ -300,6 +301,8 @@ class PlayerConnection extends BaseConnection {
                     this.disconnect();
                     this.roomId = msg.roomId;
                     this.connect();
+                } else if (msg.type == 'rpcResult') {
+                    this.rpcResultHandler?.(msg.reqId, msg.value);
                 }
             }
         };
@@ -318,6 +321,11 @@ class PlayerConnection extends BaseConnection {
         }
         super.disconnect(reason);
     }
+	sendRpc(name, params) {
+		let id = Date.now(); // TODO: monotonic
+		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: id, params: params }));
+		return id;
+	}
     sendMouseEvent(action, x, y, button) {
         this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
     }
@@ -674,13 +682,13 @@ class ElectronStreamProvider {
             let streams = await this.getStreams();
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: streams.map(s => ({ id: s.id, name: s.name })) }));
         } else if (msg.type == 'rpc' && msg.name == 'streamFromPoint') {
-            let si = await RDP.streamFromPoint({ target: s, x: msg.x, y: msg.y });
+            let si = await RDP.streamFromPoint({ target: s, x: msg.params.x, y: msg.params.y });
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: si }));
         } else if (msg.type == 'rpc' && msg.name == 'play') {
             let streams = await this.getStreams();
-            let s = streams.find(s => s.id == msg.streamId) || { id: msg.streamId, name: 'unknown' };
+            let s = streams.find(s => s.id == msg.params.streamId) || { id: msg.params.streamId, name: 'unknown' };
             let c = await this.startStream(cm, s);
-            ch.send(JSON.stringify({ type: msg.redirect ? 'redirect' : 'rpcResult', reqId: msg.reqId, roomId: c?.conn.roomId }));
+            ch.send(JSON.stringify({ type: msg.params.redirect ? 'redirect' : 'rpcResult', reqId: msg.reqId, roomId: c?.conn.roomId }));
         } else {
             console.log("drop:", msg);
         }
