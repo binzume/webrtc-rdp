@@ -64,157 +64,178 @@ class Settings {
 }
 
 class BaseConnection {
-	/**
-	 * @param {string} signalingUrl 
-	 * @param {string} roomId 
-	 */
-	constructor(signalingUrl, roomId) {
-		this.signalingUrl = signalingUrl;
-		this.roomId = roomId;
-		this.conn = null;
-		/** @type {MediaStream} */
-		this.mediaStream = null;
-		this.stopTracksOnDisposed = true;
-		/** @type {Record<string, DataChannelInfo>} */
-		this.dataChannels = {};
-		this.onstatechange = null;
-		this.state = "disconnected";
-		this.options = Object.assign({}, Ayame.defaultOptions);
-		this.options.video = Object.assign({}, this.options.video);
-		this.options.audio = Object.assign({}, this.options.audio);
-		this.reconnectWaitMs = -1;
-		this.connectTimeoutMs = -1;
-	}
-	async connect() {
-		if (this.conn || this.state == 'disposed') {
-			throw 'invalid operation';
-		}
-		await this.setupConnection().connect(this.mediaStream, null);
-	}
-	setupConnection() {
-		console.log("connecting..." + this.signalingUrl + " " + this.roomId);
-		this.updateState("connecting");
-		if (this.connectTimeoutMs > 0) {
-			this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
-		}
+    /**
+     * @param {string} signalingUrl 
+     * @param {string|null} signalingKey 
+     * @param {string} roomId 
+     */
+    constructor(signalingUrl, signalingKey, roomId) {
+        this.signalingUrl = signalingUrl;
+        this.roomId = roomId;
+        this.conn = null;
+        /** @type {MediaStream} */
+        this.mediaStream = null;
+        this.stopTracksOnDisposed = true;
+        /** @type {Record<string, DataChannelInfo>} */
+        this.dataChannels = {};
+        this.onstatechange = null;
+        /** @type {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} */
+        this.state = 'disconnected';
+        this.options = Object.assign({}, Ayame.defaultOptions);
+        this.options.video = Object.assign({}, this.options.video);
+        this.options.audio = Object.assign({}, this.options.audio);
+        this.options.signalingKey = signalingKey;
+        this.reconnectWaitMs = -1;
+        this.connectTimeoutMs = -1;
+    }
+    async connect() {
+        if (this.conn || this.state == 'disposed') {
+            throw 'invalid operation';
+        }
+        await this.setupConnection().connect(this.mediaStream, null);
+    }
+    setupConnection() {
+        console.log("connecting..." + this.signalingUrl + " " + this.roomId);
+        this.updateState('connecting');
+        if (this.connectTimeoutMs > 0) {
+            this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
+        }
 
-		let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
-		conn.on('open', async (e) => {
-			for (let c of Object.keys(this.dataChannels)) {
-				console.log("add dataChannel: " + c);
-				this.handleDataChannel(await conn.createDataChannel(c));
-			}
-			this.updateState("waiting");
-		});
-		conn.on('connect', (e) => {
-			clearTimeout(this._connectTimer);
-			this.updateState("connected");
-		});
-		conn.on('datachannel', (channel) => {
-			console.log('datachannel', channel?.label);
-			this.handleDataChannel(channel);
-		});
-		conn.on('disconnect', (e) => {
-			let oldState = this.state;
-			this.conn = null;
-			this.disconnect(e.reason);
-			if ((oldState == "connected" || oldState == "waiting") && this.reconnectWaitMs >= 0) {
-				setTimeout(() => this.connect(), this.reconnectWaitMs);
-			}
-		});
-		return conn;
-	}
-	disconnect(reason = null) {
-		console.log('disconnect', reason);
-		clearTimeout(this._connectTimer);
-		this.updateState("disconnected");
-		if (this.conn) {
-			this.conn.on('disconnect', () => { });
-			this.conn.disconnect();
-			this.conn.stream = null;
-			this.conn = null;
-		}
-		for (let c of Object.values(this.dataChannels)) {
-			c.ch = null;
-		}
-	}
-	dispose() {
-		this.disconnect();
-		this.updateState("disposed");
-		this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
-		this.mediaStream = null;
-	}
-	/**
-	 * @param {string} s
-	 */
-	updateState(s) {
-		if (s != this.state) {
-			console.log(this.roomId, s);
-			let oldState = this.state;
-			this.state = s;
-			this.onstatechange && this.onstatechange(s, oldState);
-		}
-	}
-	/**
-	 * @param {RTCDataChannel} ch
-	 */
-	handleDataChannel(ch) {
-		if (!ch) return;
-		let c = this.dataChannels[ch.label];
-		if (c && !c.ch) {
-			c.ch = ch;
-			ch.onmessage = c.onmessage?.bind(ch, ch);
-			// NOTE: dataChannel.onclose = null in Ayame web sdk.
-			ch.addEventListener('open', c.onopen?.bind(ch, ch));
-			ch.addEventListener('close', c.onclose?.bind(ch, ch));
-		}
-	}
+        let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
+        conn.on('open', async (e) => {
+            for (let c of Object.keys(this.dataChannels)) {
+                this.handleDataChannel(await conn.createDataChannel(c));
+            }
+            this.updateState('waiting');
+        });
+        conn.on('connect', (e) => {
+            clearTimeout(this._connectTimer);
+            this.updateState('connected');
+        });
+        conn.on('datachannel', (channel) => {
+            this.handleDataChannel(channel);
+        });
+        conn.on('disconnect', (e) => {
+            this.conn = null;
+            this.disconnect(e.reason);
+        });
+        return conn;
+    }
+    disconnect(reason = null) {
+        console.log('disconnect', reason);
+        clearTimeout(this._connectTimer);
+        if (this.conn) {
+            this.conn.on('disconnect', () => { });
+            this.conn.disconnect();
+            this.conn.stream = null;
+            this.conn = null;
+        }
+        if (reason != 'dispose' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
+            setTimeout(() => this.connect(), this.reconnectWaitMs);
+        }
+        for (let c of Object.values(this.dataChannels)) {
+            c.ch = null;
+        }
+        this.updateState('disconnected');
+    }
+    dispose() {
+        this.disconnect('dispose');
+        this.updateState('disposed');
+        this.stopTracksOnDisposed && this.mediaStream?.getTracks().forEach(t => t.stop());
+        this.mediaStream = null;
+    }
+    /**
+     * @param {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} s
+     */
+    updateState(s) {
+        if (s != this.state && this.state != 'disposed') {
+            console.log(this.roomId, s);
+            let oldState = this.state;
+            this.state = s;
+            this.onstatechange && this.onstatechange(s, oldState);
+        }
+    }
+    /**
+     * @param {RTCDataChannel} ch
+     */
+    handleDataChannel(ch) {
+        if (!ch) return;
+        let c = this.dataChannels[ch.label];
+        if (c && !c.ch) {
+            console.log('datachannel', ch.label);
+            c.ch = ch;
+            ch.onmessage = c.onmessage?.bind(ch, ch);
+            // NOTE: dataChannel.onclose = null in Ayame web sdk.
+            c.onopen && ch.addEventListener('open', c.onopen.bind(ch, ch));
+            c.onclose && ch.addEventListener('close', c.onclose.bind(ch, ch));
+        }
+    }
 }
 
 class PlayerConnection extends BaseConnection {
-	/**
-	 * @param {string} signalingUrl 
-	 * @param {string} roomId 
-	 * @param {HTMLVideoElement} videoEl 
-	 */
-	constructor(signalingUrl, roomId, videoEl) {
-		super(signalingUrl, roomId);
-		this.options.video.direction = 'recvonly';
-		this.options.audio.direction = 'recvonly';
-		this.videoEl = videoEl;
-		this.dataChannels['controlEvent'] = {
-			onmessage: (ch, ev) => {
-				let msg = JSON.parse(ev.data);
-				if (msg.type == 'redirect') {
-					if (msg.roomId) {
-						this.disconnect();
-						this.roomId = msg.roomId;
-						this.connect();
-					}
-				}
-			}
-		};
-	}
-	setupConnection() {
-		let conn = super.setupConnection();
-		conn.on('addstream', (ev) => {
-			this.mediaStream = ev.stream;
-			this.videoEl.srcObject = ev.stream;
+    /**
+     * @param {string} signalingUrl 
+     * @param {string} roomId 
+     * @param {HTMLVideoElement} videoEl 
+     */
+    constructor(signalingUrl, signalingKey, roomId, videoEl) {
+        super(signalingUrl, signalingKey, roomId);
+        this.options.video.direction = 'recvonly';
+        this.options.audio.direction = 'recvonly';
+        this.videoEl = videoEl;
+		this._rpcResultHandler = {};
+        this.dataChannels['controlEvent'] = {
+            onmessage: (ch, ev) => {
+                let msg = JSON.parse(ev.data);
+                if (msg.type == 'redirect' && msg.roomId) {
+                    this.disconnect();
+                    this.roomId = msg.roomId;
+                    this.connect();
+                } else if (msg.type == 'rpcResult') {
+					this._rpcResultHandler[msg.reqId]?.(msg);
+                }
+            }
+        };
+    }
+    setupConnection() {
+        let conn = super.setupConnection();
+        conn.on('addstream', (ev) => {
+            this.mediaStream = ev.stream;
+            this.videoEl.srcObject = ev.stream;
+        });
+        return conn;
+    }
+    disconnect(reason = null) {
+        if (this.videoEl.srcObject == this.mediaStream) {
+            this.videoEl.srcObject = null;
+        }
+        super.disconnect(reason);
+    }
+    sendRpc(name, params) {
+		let id = Date.now(); // TODO: monotonic
+		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: id, params: params }));
+		return id;
+    }
+	sendRpcAsync(name, params, timeoutMs = 10000) {
+		let reqId = this.sendRpc(name, params);
+		return new Promise((resolve, reject) => {
+			let timer = setTimeout(() => {
+				delete this._rpcResultHandler[reqId];
+				reject('timeout');
+			}, timeoutMs);
+			this._rpcResultHandler[reqId] = (res) => {
+				clearTimeout(timer);
+				delete this._rpcResultHandler[reqId];
+				resolve(res.value);
+			};
 		});
-		return conn;
 	}
-	disconnect(reason = null) {
-		if (this.videoEl.srcObject == this.mediaStream) {
-			this.videoEl.srcObject = null;
-		}
-		super.disconnect(reason);
-	}
-	sendMouseEvent(action, x, y, button) {
-		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
-	}
-	sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
-		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
-	}
+    sendMouseEvent(action, x, y, button) {
+        this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
+    }
+    sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
+        this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+    }
 }
 
 AFRAME.registerComponent('webrtc-rdp', {
@@ -239,7 +260,93 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let dragging = false;
 		let dragTimer = null;
 		screenEl.setAttribute('tabindex', 0);
+
+		// EXPERIMENT
+		let altMode = false;
+		let draggingStream = null;
+		/** @type {THREE.Object3D} */
+		let rectObj = null;
+		let prepareDrag = () => altMode = true;
+		let startDrag = async (/** @type {THREE.Raycaster} */ raycaster, intersection) => {
+			let x = intersection.uv.x, y = 1 - intersection.uv.y;
+			let draggingDistancde = intersection.distance;
+			draggingStream = await this.playerConn.sendRpcAsync('streamFromPoint', { x: x, y: y });
+			if (!altMode) {
+				draggingStream = null;
+				return;
+			}
+
+			if (!rectObj) {
+				const material = new THREE.LineBasicMaterial({ color: 0x8888ff, depthTest: false });
+				const points = [
+					new THREE.Vector3(-0.5, -0.5, 0),
+					new THREE.Vector3(-0.5, 0.5, 0),
+					new THREE.Vector3(0.5, 0.5, 0),
+					new THREE.Vector3(0.5, -0.5, 0),
+				];
+				rectObj = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), material);
+				let sw = screenEl.getAttribute('width') || 1, sh = screenEl.getAttribute('height') || 1;
+				rectObj.scale.set(draggingStream.rect.width * sw, draggingStream.rect.height * sh, 1);
+				this.el.setObject3D('draggingrect', rectObj);
+			}
+			clearTimeout(dragTimer);
+			dragTimer = setInterval(() => {
+				let v = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, draggingDistancde);
+				rectObj.position.copy(rectObj.parent.worldToLocal(v));
+			}, 100);
+		};
+		let stopDrag = async (ok = false) => {
+			clearTimeout(dragTimer);
+			let stream = draggingStream;
+			let position = new THREE.Vector3();
+			let scale = new THREE.Vector3(1, 1, 1);
+			altMode = false;
+			draggingStream = null;
+			if (rectObj) {
+				rectObj.getWorldPosition(position);
+				scale.copy(rectObj.scale);
+				this.el.removeObject3D('draggingrect');
+				rectObj.geometry.dispose();
+				if (rectObj.material instanceof THREE.Material) {
+					rectObj.material.dispose();
+				}
+				rectObj = null;
+			}
+			if (ok && !screenEl.is('cursor-hovered') && stream != null) {
+				if (this.el.components.vrapp) {
+					let appManager = this.el.components.vrapp.appManager;
+					let r = await this.playerConn.sendRpcAsync('play', { streamId: stream.id, redirect: false });
+					let app = await appManager.launch('app-webrtc-rdp', null, { disableWindowLocator: true });
+					app.object3D.quaternion.copy(this.el.object3D.quaternion);
+					// app.setAttribute('xyrect', {width: scale.x, height: scale.y});
+					app.setAttribute('position', app.object3D.parent.worldToLocal(position));
+					app.setAttribute('webrtc-rdp', { roomId: r.roomId, maxWidth: Math.max(scale.x, 1.5), maxHeight: Math.max(scale.y, 1.5) });
+				} else {
+					// For debugging
+					this.playerConn.sendRpc('play', { streamId: stream.id, redirect: true });
+				}
+			}
+		};
+		// Grip
+		this._ongripdown = (_) => prepareDrag();
+		this._ongripup = (_) => stopDrag();
+		for (let el of this.el.sceneEl.querySelectorAll('[laser-controls]')) {
+			el.addEventListener('gripdown', this._ongripdown);
+			el.addEventListener('gripup', this._ongripup);
+		}
+		// Right ALT
+		this._onkeydown = (ev) => ev.code == 'AltRight' && prepareDrag();
+		this._onkeyup = (ev) => ev.code == 'AltRight' && stopDrag();
+		window.addEventListener('keydown', this._onkeydown);
+		window.addEventListener('keyup', this._onkeyup);
+
+
 		screenEl.addEventListener('mousedown', (ev) => {
+			if (altMode) {
+				startDrag(ev.detail.cursorEl.components.raycaster.raycaster, ev.detail.intersection);
+				return;
+			}
+
 			dragTimer = setTimeout(() => {
 				dragging = true;
 				ev.detail.intersection && this.playerConn?.sendMouseEvent("mousedown", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
@@ -252,7 +359,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				}
 			}, 200);
 		});
-		screenEl.addEventListener('mouseup', (ev) => {
+		this.el.sceneEl.addEventListener('mouseup', (ev) => {
 			clearTimeout(dragTimer);
 			if (dragging) {
 				ev.detail.intersection && this.playerConn?.sendMouseEvent("mouseup", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
@@ -261,6 +368,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
 			}
 			dragging = false;
+			stopDrag(true);
 		});
 		screenEl.addEventListener('click', (ev) => {
 			ev.detail.intersection && this.playerConn?.sendMouseEvent("click", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
@@ -333,18 +441,20 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 		});
 	},
-	update() {
+	update(oldData) {
 		let d = Settings.getPeerDevices()[this.data.settingIndex];
 		if (d) {
-            let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, 50) + '...';
-			this._byName("roomName").setAttribute('value', name);
+			this._byName("roomName").setAttribute('value', this._settingName(d));
+		}
+		if (oldData.roomId != this.data.roomId && this.data.roomId) {
+			this.connect();
 		}
 	},
 	connect() {
 		this.disconnect();
 		this._updateScreen(this.data.loadingSrc, false);
 		let data = this.data;
-		let settings = { signalingKey: null, roomId: data.roomId };
+		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default' };
 		if (data.settingIndex >= 0) {
 			settings = Settings.getPeerDevices()[data.settingIndex];
 			if (!settings) {
@@ -353,10 +463,10 @@ AFRAME.registerComponent('webrtc-rdp', {
 				return;
 			}
 		}
-		let roomId = settings.roomId + "." + this.roomIdSuffix;
+		let roomId = data.roomId || settings.roomId + "." + this.roomIdSuffix;
 
 		if (this.el.components.xywindow) {
-			this.el.setAttribute("xywindow", "title", "RDP: " + this.roomIdSuffix);
+			this.el.setAttribute("xywindow", "title", "RDP " + this._settingName(settings));
 		}
 
 		// video element
@@ -382,8 +492,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this.videoEl = videoEl;
 
 		// connect
-		this.playerConn = new PlayerConnection(data.signalingUrl, roomId, videoEl);
-		this.playerConn.options.signalingKey = settings.signalingKey;
+		this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
 		this.playerConn.connect();
 	},
 	disconnect() {
@@ -411,6 +520,9 @@ AFRAME.registerComponent('webrtc-rdp', {
 			this.el.setAttribute("xyrect", { width: w, height: h });
 		}, 0);
 	},
+	_settingName(d, limit = 32) {
+		return d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, limit) + '...';
+	},
 	_updateScreen(src, transparent) {
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
 		this.screenEl.setAttribute('material', { shader: "flat", src: src, transparent: transparent });
@@ -419,6 +531,12 @@ AFRAME.registerComponent('webrtc-rdp', {
 		return /** @type {import("aframe").Entity} */ (this.el.querySelector("[name=" + name + "]"));
 	},
 	remove: function () {
+		for (let el of this.el.sceneEl.querySelectorAll('[laser-controls]')) {
+			el.removeEventListener('gripdown', this._ongripdown);
+			el.removeEventListener('gripup', this._ongripup);
+		}
+		window.removeEventListener('keydown', this._onkeydown);
+		window.removeEventListener('keyup', this._onkeyup);
 		this.disconnect();
 		// @ts-ignore
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
