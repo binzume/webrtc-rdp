@@ -293,7 +293,7 @@ class PlayerConnection extends BaseConnection {
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
-        this.rpcResultHandler = null;
+		this._rpcResultHandler = {};
         this.dataChannels['controlEvent'] = {
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
@@ -302,7 +302,7 @@ class PlayerConnection extends BaseConnection {
                     this.roomId = msg.roomId;
                     this.connect();
                 } else if (msg.type == 'rpcResult') {
-                    this.rpcResultHandler?.(msg.reqId, msg.value);
+					this._rpcResultHandler[msg.reqId]?.(msg);
                 }
             }
         };
@@ -321,10 +321,24 @@ class PlayerConnection extends BaseConnection {
         }
         super.disconnect(reason);
     }
-	sendRpc(name, params) {
+    sendRpc(name, params) {
 		let id = Date.now(); // TODO: monotonic
 		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: id, params: params }));
 		return id;
+    }
+	sendRpcAsync(name, params, timeoutMs = 10000) {
+		let reqId = this.sendRpc(name, params);
+		return new Promise((resolve, reject) => {
+			let timer = setTimeout(() => {
+				delete this._rpcResultHandler[reqId];
+				reject('timeout');
+			}, timeoutMs);
+			this._rpcResultHandler[reqId] = (res) => {
+				clearTimeout(timer);
+				delete this._rpcResultHandler[reqId];
+				resolve(res.value);
+			};
+		});
 	}
     sendMouseEvent(action, x, y, button) {
         this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
@@ -688,7 +702,11 @@ class ElectronStreamProvider {
             let streams = await this.getStreams();
             let s = streams.find(s => s.id == msg.params.streamId) || { id: msg.params.streamId, name: 'unknown' };
             let c = await this.startStream(cm, s);
-            ch.send(JSON.stringify({ type: msg.params.redirect ? 'redirect' : 'rpcResult', reqId: msg.reqId, roomId: c?.conn.roomId }));
+            if (msg.params.redirect) {
+                ch.send(JSON.stringify({ type: 'redirect', reqId: msg.reqId, roomId: c?.conn.roomId }));
+            } else {
+                ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
+            }
         } else {
             console.log("drop:", msg);
         }
