@@ -20,10 +20,10 @@ function GetWindowRect(hWnd) {
     return null;
   }
   return {
-    left: rectBuf.readUInt32LE(0),
-    top: rectBuf.readUInt32LE(4),
-    right: rectBuf.readUInt32LE(8),
-    bottom: rectBuf.readUInt32LE(12),
+    left: rectBuf.readInt32LE(0),
+    top: rectBuf.readInt32LE(4),
+    right: rectBuf.readInt32LE(8),
+    bottom: rectBuf.readInt32LE(12),
   };
 }
 
@@ -171,7 +171,8 @@ class InputManager {
     return process.platform == 'win32' ? screen.dipToScreenPoint(p) : p;
   }
   _fromScreenPoint(d, x, y) {
-    return { x: d.bounds.x + d.bounds.width * x, y: d.bounds.y + d.bounds.height * y }; // TODO: dip
+    let p = process.platform == 'win32' ? screen.screenToDipPoint({ x: x, y: y }) : { x: x, y: y };
+    return { x: (p.x - d.bounds.x) / d.bounds.width, y: (p.y - d.bounds.y) / d.bounds.height }; // TODO: dip
   }
 }
 
