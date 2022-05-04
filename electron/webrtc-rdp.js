@@ -321,13 +321,9 @@ class PlayerConnection extends BaseConnection {
         }
         super.disconnect(reason);
     }
-    sendRpc(name, params) {
-		let id = Date.now(); // TODO: monotonic
-		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: id, params: params }));
-		return id;
-    }
 	sendRpcAsync(name, params, timeoutMs = 10000) {
-		let reqId = this.sendRpc(name, params);
+		let reqId = Date.now(); // TODO: monotonic
+		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: reqId, params: params }));
 		return new Promise((resolve, reject) => {
 			let timer = setTimeout(() => {
 				delete this._rpcResultHandler[reqId];
@@ -704,9 +700,8 @@ class ElectronStreamProvider {
             let c = await this.startStream(cm, s);
             if (msg.params.redirect) {
                 ch.send(JSON.stringify({ type: 'redirect', reqId: msg.reqId, roomId: c?.conn.roomId }));
-            } else {
-                ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
             }
+            ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
         } else {
             console.log("drop:", msg);
         }
