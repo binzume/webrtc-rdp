@@ -63,6 +63,13 @@ MacOSでも動く気がしますが，Windowsでのみで動作確認してい�
 - [A-Frame](https://aframe.io/)を使っています．
 - [単体](https://binzume.github.io/webrtc-rdp/webxr/)でも使えますが，[binzume/vr-workspace](https://github.com/binzume/vr-workspace)内のアプリとして読み込む前提の作りになっています
 
+Oculus Touchコントローラーのボタン割当:
+
+- Trigger: 左クリック
+- Aボタン: 中クリック
+- Bボタン: 右クリック
+- Grip＆ドラッグ: デスクトップ内のウインドウを分離して表示 (ホストがElectron Appの場合のみ)
+
 ## Security
 
 - P2Pなので，同じネットワーク内で使う場合は共有している映像や音声などはインターネットを経由しません．
