@@ -3,18 +3,10 @@
 
 // Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
-const sendSignalingKey = location.host.includes('binzume.') || globalThis.RDP != undefined || true;
+const sendSignalingKey = location.host.includes('binzume.') || globalThis.RDP != undefined;
 const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
 const roomIdPrefix = sendSignalingKey ? 'binzume@rdp-room-' : 'binzume-rdp-room-';
 const roomIdPinPrefix = sendSignalingKey ? 'binzume@rdp-pin-' : 'binzume-rdp-pin-';
-
-/** 
- * @typedef {{onmessage?: ((ch:RTCDataChannel,ev:any) => void), onopen?: ((ch:RTCDataChannel, ev:Event) => void), onclose?: ((ch:RTCDataChannel, ev:Event) => void), ch?:RTCDataChannel }} DataChannelInfo
- * @typedef {{name?: string, roomId: string, publishRoomId?: string, userAgent: string, token:string, signalingKey:string}} DeviceSettings
- * @typedef {{id: string, name: string, hasAudio?: boolean}} StreamSpec
- * @typedef {{conn:PublisherConnection, name: string, id:number, opaque: any, permanent: boolean}} ConnectionInfo
- * @typedef {{startStream:((cm:ConnectionManager, spec:StreamSpec, permanent:boolean)=>Promise<ConnectionInfo>), getStreams?:(()=>Promise<StreamSpec[]>)}} StreamProvider
- */
 
 class Settings {
     static settingsKey = 'webrtc-rdp-settings';
@@ -293,7 +285,7 @@ class PlayerConnection extends BaseConnection {
         this.options.video.direction = 'recvonly';
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
-		this._rpcResultHandler = {};
+        this._rpcResultHandler = {};
         this.dataChannels['controlEvent'] = {
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
@@ -302,7 +294,7 @@ class PlayerConnection extends BaseConnection {
                     this.roomId = msg.roomId;
                     this.connect();
                 } else if (msg.type == 'rpcResult') {
-					this._rpcResultHandler[msg.reqId]?.(msg);
+                    this._rpcResultHandler[msg.reqId]?.(msg);
                 }
             }
         };
@@ -321,21 +313,21 @@ class PlayerConnection extends BaseConnection {
         }
         super.disconnect(reason);
     }
-	sendRpcAsync(name, params, timeoutMs = 10000) {
-		let reqId = Date.now(); // TODO: monotonic
-		this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: reqId, params: params }));
-		return new Promise((resolve, reject) => {
-			let timer = setTimeout(() => {
-				delete this._rpcResultHandler[reqId];
-				reject('timeout');
-			}, timeoutMs);
-			this._rpcResultHandler[reqId] = (res) => {
-				clearTimeout(timer);
-				delete this._rpcResultHandler[reqId];
-				resolve(res.value);
-			};
-		});
-	}
+    sendRpcAsync(name, params, timeoutMs = 10000) {
+        let reqId = Date.now(); // TODO: monotonic
+        this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'rpc', name: name, reqId: reqId, params: params }));
+        return new Promise((resolve, reject) => {
+            let timer = setTimeout(() => {
+                delete this._rpcResultHandler[reqId];
+                reject('timeout');
+            }, timeoutMs);
+            this._rpcResultHandler[reqId] = (res) => {
+                clearTimeout(timer);
+                delete this._rpcResultHandler[reqId];
+                resolve(res.value);
+            };
+        });
+    }
     sendMouseEvent(action, x, y, button) {
         this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
     }
@@ -359,10 +351,9 @@ class ConnectionManager {
      * @param {string} name 
      * @param {boolean} connect 
      * @param {boolean} permanent 
-     * @param {any} opaque 
      * @returns {ConnectionInfo}
      */
-    addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true, opaque = null) {
+    addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true) {
         let id = this._genId();
         let roomId = this.settings.publishRoomId || this.settings.roomId;
         name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
@@ -370,7 +361,7 @@ class ConnectionManager {
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
 
-        let info = { conn: conn, id: id, name: name, opaque: opaque, permanent: permanent };
+        let info = { conn: conn, id: id, name: name, permanent: permanent };
         this._connections.push(info);
         this.onadded?.(info);
         if (connect) {
@@ -570,16 +561,14 @@ class BrowserStreamProvider {
             return null;
         }
         let target = stream.isCamera ? null : this._getTarget(stream.mediaStream);
-        let self = this;
-        let messageHandler = {
-            onmessage(_ch, ev) {
+        let c = cm.addStream(stream.mediaStream, {
+            onmessage: (_ch, ev) => {
                 let msg = JSON.parse(ev.data);
-                if (self.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key')) {
-                    self.sendInputEvent(target, msg);
+                if (this.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key')) {
+                    this.sendInputEvent(target, msg);
                 }
             },
-        };
-        let c = cm.addStream(stream.mediaStream, messageHandler, null, true, permanent);
+        }, null, true, permanent);
         c.conn.stopTracksOnDisposed = false; // Reuse media streams.
         return c;
     }
@@ -616,7 +605,7 @@ class BrowserStreamProvider {
 
 class ElectronStreamProvider {
     constructor() {
-        this.lastMouseMoveTime = 0;
+        this._lastMouseMoveTime = 0;
         this.streamTypes = ['screen', 'window'];
         /** @type {Record<string, StreamProvider>} */
         this.pseudoStreams = {};
@@ -677,10 +666,10 @@ class ElectronStreamProvider {
     async _handleMessage(cm, s, ch, msg) {
         if (msg.type == 'mouse') {
             let now = Date.now();
-            if (now - this.lastMouseMoveTime < 10 && msg.action == 'move') {
+            if (now - this._lastMouseMoveTime < 10 && msg.action == 'move') {
                 return;
             }
-            this.lastMouseMoveTime = now;
+            this._lastMouseMoveTime = now;
             await RDP.sendMouse({ target: s, action: msg.action, button: msg.button, x: msg.x, y: msg.y });
         } else if (msg.type == 'key') {
             let modifiers = msg.modifiers || [];
@@ -774,7 +763,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         initStreams = async (d) => {
             let streamProvider = d.streamProvider = new ElectronStreamProvider();
             streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(streamProvider);
-            streamProvider.pseudoStreams['_redirector'] = new StreamRedirector(streamProvider, { id: '_selector', name: 'selector' });
+            // streamProvider.pseudoStreams['_redirector'] = new StreamRedirector(streamProvider, { id: '_selector', name: 'selector' });
             // await streamProvider.startStream(d.cm, { id: '_redirector', name: 'redirector' }, true);
             await streamProvider.startStream(d.cm, { id: '_selector', name: 'selector' }, true);
         };

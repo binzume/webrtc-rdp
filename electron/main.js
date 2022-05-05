@@ -83,15 +83,12 @@ class InputManager {
   sendMouse(mouseMessage) {
     let { target, action, x, y, button } = mouseMessage;
     let windowId = this._getWindowId(target);
-    let d = this.displays[target.display_id];
     if (windowId) {
       action != 'move' && SetForegroundWindow(windowId);
       this.moveMouse_window(windowId, x, y);
-    } else if (d) {
-      this.moveMouse_display(d, x, y);
     } else {
-      console.log("invalid target. use primary display.", target);
-      this.moveMouse_display(screen.getPrimaryDisplay(), x, y);
+      let d = this.displays[target.display_id];
+      this.moveMouse_display(d || screen.getPrimaryDisplay(), x, y);
     }
     let buttonStr = ['left', 'middle', 'right'][button] || 'left';
     if (action == 'click') {
@@ -120,9 +117,7 @@ class InputManager {
     let windowId = this._getWindowId(target);
     windowId && SetForegroundWindow(windowId);
 
-    if (key == 'Unidentified') {
-      return;
-    } else if (key == 'KanaMode' || key == 'HiraganaKatakana') {
+    if (key == 'KanaMode' || key == 'HiraganaKatakana') {
       // Robot.js doesn't support KanaMode key.
       key = ' ';
       modifiers = ['control'];
@@ -138,8 +133,9 @@ class InputManager {
       action == 'press' && robot.typeString(key);
       return;
     }
-    if (action == 'press') {
-      // robot.keyTap(key, modifiers);
+    if (key == 'Unidentified') {
+      return;
+    } else if (action == 'press') {
       robot.keyToggle(key, 'down', modifiers);
       robot.keyToggle(key, 'up', modifiers);
     } else {
@@ -172,7 +168,7 @@ class InputManager {
   }
   _fromScreenPoint(d, x, y) {
     let p = process.platform == 'win32' ? screen.screenToDipPoint({ x: x, y: y }) : { x: x, y: y };
-    return { x: (p.x - d.bounds.x) / d.bounds.width, y: (p.y - d.bounds.y) / d.bounds.height }; // TODO: dip
+    return { x: (p.x - d.bounds.x) / d.bounds.width, y: (p.y - d.bounds.y) / d.bounds.height };
   }
 }
 
