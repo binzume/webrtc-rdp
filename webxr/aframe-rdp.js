@@ -274,7 +274,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 			let sw = screenEl.getAttribute('width') || 1, sh = screenEl.getAttribute('height') || 1;
 			let sc = screenEl.object3D.getWorldScale(new THREE.Vector3());
 			let rect = draggingStream.rect;
-			rectOffset.set((rect.x + rect.width / 2 - x) * sw * sc.x, -(rect.y + rect.height / 2 - y) * sh * sc.y, 0);
+			rectOffset.set((rect.x + rect.width / 2 - x) * sw, -(rect.y + rect.height / 2 - y) * sh, 0);
 
 			if (!rectObj) {
 				const material = new THREE.LineBasicMaterial({ color: 0x8888ff, depthTest: false });
@@ -290,7 +290,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 			let update = () => {
 				let v = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, distance);
-				rectObj.position.copy(rectObj.parent.worldToLocal(v.add(rectOffset)));
+				rectObj.position.copy(rectObj.parent.worldToLocal(v).add(rectOffset));
 			};
 			clearTimeout(dragTimer);
 			dragTimer = setInterval(update, 100);
@@ -329,10 +329,10 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 		};
 		this._ongripup = (_) => stopDrag();
-		this._onbbuttondown = (ev) => {
+		this._onbuttondown = (ev) => {
 			let intersection = ev.target.components.raycaster.getIntersection(screenEl);
-			if (intersection) {
-				this.playerConn?.sendMouseEvent("click", intersection.uv.x, 1 - intersection.uv.y, 2);
+			if (intersection && screenEl.is('cursor-hovered')) {
+				this.playerConn?.sendMouseEvent("click", intersection.uv.x, 1 - intersection.uv.y, ev.type == 'abuttondown' ? 1 : 2);
 				screenEl.focus();
 				ev.stopPropagation();
 			}
@@ -340,7 +340,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 		for (let el of this.el.sceneEl.querySelectorAll('[laser-controls]')) {
 			el.addEventListener('gripdown', this._ongripdown);
 			el.addEventListener('gripup', this._ongripup);
-			el.addEventListener('bbuttondown', this._onbbuttondown);
+			el.addEventListener('bbuttondown', this._onbuttondown);
+			el.addEventListener('abuttondown', this._onbuttondown);
 		}
 		// Right ALT
 		this._onkeydown = (ev) => ev.code == 'AltRight' && prepareDrag();
@@ -544,7 +545,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 		for (let el of this.el.sceneEl.querySelectorAll('[laser-controls]')) {
 			el.removeEventListener('gripdown', this._ongripdown);
 			el.removeEventListener('gripup', this._ongripup);
-			el.removeEventListener('bbuttondown', this._onbbuttondown);
+			el.removeEventListener('bbuttondown', this._onbuttondown);
+			el.removeEventListener('abuttondown', this._onbuttondown);
 		}
 		window.removeEventListener('keydown', this._onkeydown);
 		window.removeEventListener('keyup', this._onkeyup);
