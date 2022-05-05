@@ -22,30 +22,27 @@ Demo URL:
 
 ## Mouse/Keyboard
 
-ブラウザ上からは，マウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，下のElectron App版を使ってください．
+ブラウザ上からはマウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，下記のElectron App版をインストールしてください．
 
-どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動してください．
-以下のような構成です．
-
-```
-クライアントブラウザ → (WebRTC DataChannel) → ホストブラウザ → (WebSocket) → inputproxy → マウス/キーボード
-```
+どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動し表示されたURLをフォームに入力することで使えるようになります．
 
 ## Electron App
 
 Chromeを起動していなくても単体で動くアプリケーションです．マウスやキーボードも使えます．
 
-[Releases](https://github.com/binzume/webrtc-rdp/releases/latest)にビルド済みのWindows用の実行ファイルを置いてあります．
+[Releases](https://github.com/binzume/webrtc-rdp/releases/latest)からWindows用のインストーラがダウンロードできます．
 
-開発時は以下のように実行してください．
+インストールせずに利用する場合や開発時は以下のように起動してください．
 
 ```
-cd electron
+git clone https://github.com/binzume/webrtc-rdp.git
+cd webrtc-rdp/electron
 npm install
 npx electron-rebuild
 npm start
 ```
 
+Node.jsのネイティブモジュールのビルドができる環境が必要です．
 `npm run build-win` で実行ファイルをビルドできます．
 MacOSでも動く気がしますが，Windowsでのみで動作確認しています．
 
