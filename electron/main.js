@@ -11,10 +11,28 @@ const user32 = process.platform == 'win32' && ffi.Library("user32.dll", {
   'GetAncestor': ["int32", ["int32", "int32"]],
 });
 
+const automation = (() => {
+  // TODO
+  try {
+    return user32 ? null : require('./build/Release/automation');
+  } catch {
+    return null;
+  }
+})();
+
 function GetWindowRect(hWnd) {
   let rectBuf = Buffer.alloc(16);
   if (!user32) {
-    return null;
+    let bounds = automation?.getWindowInfo(hWnd | 0)?.bounds;
+    if (!bounds) {
+      return null;
+    }
+    return {
+      left: bounds.x,
+      top: bounds.y,
+      right: bounds.x + bounds.width,
+      bottom: bounds.y + bounds.height,
+    };
   }
   if (!user32.GetWindowRect(hWnd, rectBuf)) {
     return null;
@@ -29,14 +47,16 @@ function GetWindowRect(hWnd) {
 
 function SetForegroundWindow(hWnd) {
   if (!user32) {
-    return false;
+    return automation?.setActiveWindow(hWnd | 0) ?? false;
   }
   return user32.SetForegroundWindow(hWnd);
 }
 
 function WindowFromPoint(x, y) {
   if (!user32) {
-    return 0;
+    let windows = automation?.getWindows();
+    let w = windows?.find(({ bounds: b, layer: l }) => l == 0 && b.x <= x && b.y <= y && b.x + b.width > x && b.y + b.height > y);
+    return w?.id ?? 0;
   }
   let hWnd = user32.WindowFromPoint(Math.floor(x) + (Math.floor(y) * (2 ** 32)));
   return hWnd != 0 ? user32.GetAncestor(hWnd, 2) : 0;
@@ -261,7 +281,7 @@ app.whenReady().then(() => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) rdp.createWindow();
-  })
+  });
 })
 
 app.on('window-all-closed', () => {
