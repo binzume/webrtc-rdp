@@ -191,11 +191,16 @@ class RDPApp {
       }
     });
 
-    window.addListener('minimize', (ev) => {
-      window.hide();
-      ev.preventDefault();
+    window.addListener('close', (ev) => {
+      if (this.mainWindow) {
+        window.hide();
+        ev.preventDefault();
+      }
     });
     window.addListener('closed', (ev) => {
+      this.mainWindow = null;
+    });
+    app.addListener('before-quit', (ec) => {
       this.mainWindow = null;
     });
 
