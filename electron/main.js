@@ -1,8 +1,7 @@
 const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
-const robot = require("hurdle-robotjs");
 const automation = require('./automation');
-const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
+const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = process.platform == 'darwin' ? require('mac-screen-capture-permissions') : {};
 
 class InputManager {
   constructor() {
@@ -10,15 +9,6 @@ class InputManager {
     this.displays = {};
     /** @type {Record<string, Electron.DesktopCapturerSource[]>} */
     this.sources = [];
-    this.specialKeys = {
-      Control: 'control', Shift: 'shift', Alt: 'alt', Meta: 'command', Insert: 'insert',
-      Enter: 'enter', Backspace: 'backspace', Tab: 'tab', Escape: 'escape', Delete: 'delete',
-      Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
-      ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down',
-      F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F5: 'f5', F6: 'f6',
-      F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
-      ' ': 'space', 'Space': 'space'
-    };
   }
   async updateSources(types = ['screen']) {
     this.sources = await desktopCapturer.getSources({ types: types, thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false });
@@ -71,34 +61,13 @@ class InputManager {
     }
   }
   sendKey(keyMessage) {
-    let { target, action, key } = keyMessage;
-    let modifiers = keyMessage.modifiers || [];
+    let { target, action, key, modifiers } = keyMessage;
     let windowId = this._getWindowId(target);
     windowId && automation.setForegroundWindow(windowId);
-
-    if (key == 'KanaMode' || key == 'HiraganaKatakana') {
-      // Robot.js doesn't support KanaMode key.
-      key = ' ';
-      modifiers = ['control'];
-    }
-
-    if (this.specialKeys[key]) {
-      key = this.specialKeys[key];
-    } else if (/^[A-Za-z0-9]$/.test(key)) {
-      if (/[A-Z]/.test(key)) {
-        modifiers.push('shift');
-      }
+    if (action == 'press') {
+      automation.tapKey(key, modifiers);
     } else {
-      action == 'press' && robot.typeString(key);
-      return;
-    }
-    if (key == 'Unidentified') {
-      return;
-    } else if (action == 'press') {
-      robot.keyToggle(key, 'down', modifiers);
-      robot.keyToggle(key, 'up', modifiers);
-    } else {
-      robot.keyToggle(key, action, modifiers);
+      automation.toggleKey(key, action == 'down', modifiers);
     }
   }
   streamFromPoint(target, x, y) {
