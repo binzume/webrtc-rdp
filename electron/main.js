@@ -1,66 +1,8 @@
 const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
 const robot = require("hurdle-robotjs");
-const ffi = require('ffi-napi');
+const automation = require('./automation');
 const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
-
-const user32 = process.platform == 'win32' && ffi.Library("user32.dll", {
-  'GetWindowRect': ["bool", ["int32", "pointer"]],
-  'SetForegroundWindow': ["bool", ["int32"]],
-  'WindowFromPoint': ["int32", ["int64"]], // TODO; struct POINT
-  'GetAncestor': ["int32", ["int32", "int32"]],
-});
-
-const automation = (() => {
-  // TODO
-  try {
-    return user32 ? null : require('./build/Release/automation');
-  } catch {
-    return null;
-  }
-})();
-
-function GetWindowRect(hWnd) {
-  let rectBuf = Buffer.alloc(16);
-  if (!user32) {
-    let bounds = automation?.getWindowInfo(hWnd | 0)?.bounds;
-    if (!bounds) {
-      return null;
-    }
-    return {
-      left: bounds.x,
-      top: bounds.y,
-      right: bounds.x + bounds.width,
-      bottom: bounds.y + bounds.height,
-    };
-  }
-  if (!user32.GetWindowRect(hWnd, rectBuf)) {
-    return null;
-  }
-  return {
-    left: rectBuf.readInt32LE(0),
-    top: rectBuf.readInt32LE(4),
-    right: rectBuf.readInt32LE(8),
-    bottom: rectBuf.readInt32LE(12),
-  };
-}
-
-function SetForegroundWindow(hWnd) {
-  if (!user32) {
-    return automation?.setActiveWindow(hWnd | 0) ?? false;
-  }
-  return user32.SetForegroundWindow(hWnd);
-}
-
-function WindowFromPoint(x, y) {
-  if (!user32) {
-    let windows = automation?.getWindows();
-    let w = windows?.find(({ bounds: b, layer: l }) => l == 0 && b.x <= x && b.y <= y && b.x + b.width > x && b.y + b.height > y);
-    return w?.id ?? 0;
-  }
-  let hWnd = user32.WindowFromPoint(Math.floor(x) + (Math.floor(y) * (2 ** 32)));
-  return hWnd != 0 ? user32.GetAncestor(hWnd, 2) : 0;
-}
 
 class InputManager {
   constructor() {
@@ -77,8 +19,6 @@ class InputManager {
       F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
       ' ': 'space', 'Space': 'space'
     };
-    robot.setKeyboardDelay(1);
-    robot.setMouseDelay(1);
   }
   async updateSources(types = ['screen']) {
     this.sources = await desktopCapturer.getSources({ types: types, thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false });
@@ -104,38 +44,37 @@ class InputManager {
     let { target, action, x, y, button } = mouseMessage;
     let windowId = this._getWindowId(target);
     if (windowId) {
-      action != 'move' && SetForegroundWindow(windowId);
+      action != 'move' && automation.setForegroundWindow(windowId);
       this.moveMouse_window(windowId, x, y);
     } else {
       let d = this.displays[target.display_id];
       this.moveMouse_display(d || screen.getPrimaryDisplay(), x, y);
     }
-    let buttonStr = ['left', 'middle', 'right'][button] || 'left';
     if (action == 'click') {
-      robot.mouseClick(buttonStr);
+      automation.click(button);
     } else if (action == 'mouseup' || action == 'up') {
-      robot.mouseToggle('up', buttonStr);
+      automation.toggleMouseButton(button, false);
     } else if (action == 'mousedown' || action == 'down') {
-      robot.mouseToggle('down', buttonStr);
+      automation.toggleMouseButton(button, true);
     }
   }
   moveMouse_display(d, x, y) {
     let p = this._toScreenPoint(d, x, y);
-    robot.moveMouse(p.x, p.y);
+    automation.setMousePos(p.x, p.y)
   }
   moveMouse_window(windowId, x, y) {
-    let rect = GetWindowRect(windowId);
+    let rect = automation.getWindowRect(windowId);
     if (rect) {
       let sx = rect.left + (rect.right - rect.left) * x;
       let sy = rect.top + (rect.bottom - rect.top) * y;
-      robot.moveMouse(sx, sy);
+      automation.setMousePos(sx, sy)
     }
   }
   sendKey(keyMessage) {
     let { target, action, key } = keyMessage;
     let modifiers = keyMessage.modifiers || [];
     let windowId = this._getWindowId(target);
-    windowId && SetForegroundWindow(windowId);
+    windowId && automation.setForegroundWindow(windowId);
 
     if (key == 'KanaMode' || key == 'HiraganaKatakana') {
       // Robot.js doesn't support KanaMode key.
@@ -169,11 +108,11 @@ class InputManager {
       return null;
     }
     let p = this._toScreenPoint(d, x, y);
-    let hWnd = WindowFromPoint(p.x, p.y);
+    let hWnd = automation.windowFromPoint(p.x, p.y);
     if (!hWnd) {
       return null;
     }
-    let rect = GetWindowRect(hWnd);
+    let rect = automation.getWindowRect(hWnd);
     let r = null;
     if (rect) {
       let p0 = this._fromScreenPoint(d, rect.left, rect.top);
