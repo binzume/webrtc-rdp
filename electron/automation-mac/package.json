@@ -1,0 +1,18 @@
+{
+  "name": "automation-mac",
+  "version": "0.0.0",
+  "description": "",
+  "main": "build/Release/automation.node",
+  "scripts": {},
+  "repository": "https://github.com/binzume/webrtc-rdp",
+  "keywords": [],
+  "author": "binzume",
+  "license": "MIT",
+  "devDependencies": {
+    "node-gyp": "^8.4.0",
+    "mac-screen-capture-permissions": "^2.0.0"
+  },
+  "dependencies": {
+  },
+  "os": ["darwin"]
+}

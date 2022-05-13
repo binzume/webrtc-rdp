@@ -12,7 +12,7 @@
         }
       ]
     }],
-    ['OS=="win"', {
+    ['OS!="mac"', {
       "targets": [
         {
             "target_name": "dummy"

@@ -1,0 +1,16 @@
+{
+  "name": "automation-robotjs",
+  "version": "0.0.0",
+  "description": "",
+  "scripts": {},
+  "repository": "https://github.com/binzume/webrtc-rdp",
+  "keywords": [],
+  "author": "binzume",
+  "license": "MIT",
+  "devDependencies": {
+  },
+  "dependencies": {
+    "hurdle-robotjs": "^0.6.7"
+  },
+  "os": ["!win32"]
+}
