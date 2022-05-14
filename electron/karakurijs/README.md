@@ -1,4 +1,4 @@
-# KarakuriJs
+# KarakuriJS
 
 Desktop automation module for Node.js
 
