@@ -3,8 +3,8 @@
     ['OS=="mac"', {
       "targets": [
         {
-            "target_name": "automation",
-            "sources": ["src/automation_mac.mm"],
+            "target_name": "karakuri",
+            "sources": ["src/automation.mm"],
             "xcode_settings": {
                 "MACOSX_DEPLOYMENT_TARGET": "10.14",
                 "OTHER_LDFLAGS": ["-framework Cocoa"]
