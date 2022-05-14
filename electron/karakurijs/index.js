@@ -158,7 +158,7 @@ function toggleMouseButton(button, down) {
 /**
  * @param {number} button 0:left, 1:middle, 2:right
  */
-function click(button) {
+function click(button = 0) {
     if (win || mac) {
         toggleMouseButton(button, true);
         toggleMouseButton(button, false);

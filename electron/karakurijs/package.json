@@ -4,7 +4,7 @@
   "description": "Desktop automation module for Node.js",
   "main": "index.js",
   "scripts": {
-    "test": "node test/automation_test.js"
+    "test": "node test/karakurijs_test.js"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [],
