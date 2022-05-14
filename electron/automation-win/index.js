@@ -55,7 +55,7 @@ function WindowFromPoint(x, y) {
 }
 
 /**
- * @param {{mouse?:{dx: number, dy: number, flags: number}, key?:{vk: number, scan: number, flags: number}}[]} inputs 
+ * @param {{mouse?:{dx?: number, dy?: number, flags: number}, key?:{vk?: number, scan?: number, flags: number}}[]} inputs 
  */
 function SendInput(inputs) {
     let sz = 40; // x64

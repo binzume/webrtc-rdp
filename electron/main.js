@@ -1,13 +1,15 @@
+// @ts-check
 const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
 const automation = require('./automation');
+// @ts-ignore
 const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = process.platform == 'darwin' ? require('mac-screen-capture-permissions') : {};
 
 class InputManager {
   constructor() {
     /** @type {Record<string, Electron.Display>} */
     this.displays = {};
-    /** @type {Record<string, Electron.DesktopCapturerSource[]>} */
+    /** @type {Electron.DesktopCapturerSource[]} */
     this.sources = [];
   }
   async updateSources(types = ['screen']) {
@@ -53,11 +55,9 @@ class InputManager {
     automation.setMousePos(p.x, p.y)
   }
   moveMouse_window(windowId, x, y) {
-    let rect = automation.getWindowRect(windowId);
-    if (rect) {
-      let sx = rect.left + (rect.right - rect.left) * x;
-      let sy = rect.top + (rect.bottom - rect.top) * y;
-      automation.setMousePos(sx, sy)
+    let bounds = automation.getWindowBounds(windowId);
+    if (bounds) {
+      automation.setMousePos(bounds.x + bounds.width * x, bounds.y + bounds.height * y)
     }
   }
   sendKey(keyMessage) {
@@ -81,14 +81,14 @@ class InputManager {
     if (!hWnd) {
       return null;
     }
-    let rect = automation.getWindowRect(hWnd);
+    let bounds = automation.getWindowBounds(hWnd);
     let r = null;
-    if (rect) {
-      let p0 = this._fromScreenPoint(d, rect.left, rect.top);
-      let p1 = this._fromScreenPoint(d, rect.right, rect.bottom);
+    if (bounds) {
+      let p0 = this._fromScreenPoint(d, bounds.x, bounds.y);
+      let p1 = this._fromScreenPoint(d, bounds.x + bounds.width, bounds.y + bounds.height);
       r = { x: p0.x, y: p0.y, width: p1.x - p0.x, height: p1.y - p0.y };
     }
-    return { id: `window:${hWnd}:0`, rect: r, rawRect: rect };
+    return { id: `window:${hWnd}:0`, rect: r, rawBounds: bounds };
   }
   _toScreenPoint(d, x, y) {
     let p = { x: d.bounds.x + d.bounds.width * x, y: d.bounds.y + d.bounds.height * y };

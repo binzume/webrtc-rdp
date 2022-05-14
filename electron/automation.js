@@ -1,8 +1,8 @@
-
-
-const automationWin = process.platform == 'win32' ? require('automation-win') : null;
-const automationMac = process.platform == 'darwin' ? (() => {
+// @ts-check
+const win = process.platform == 'win32' ? require('automation-win') : null;
+const mac = process.platform == 'darwin' ? (() => {
     try {
+        // @ts-ignore
         return require('automation-mac');
     } catch {
         console.log('ERROR: Could not load automation-mac.');
@@ -13,52 +13,61 @@ const robot = process.platform != 'win32' ? require("hurdle-robotjs") : null;
 robot?.setKeyboardDelay(1);
 robot?.setMouseDelay(1);
 
-function getWindowRect(windowId) {
-    if (automationWin) {
-        return automationWin.GetWindowRect(windowId);
-    }
-    let bounds = automationMac?.getWindowInfo(windowId | 0)?.bounds;
-    if (!bounds) {
-        return null;
-    }
-    return {
-        left: bounds.x,
-        top: bounds.y,
-        right: bounds.x + bounds.width,
-        bottom: bounds.y + bounds.height,
-    };
+/**
+ * @param {{left: number, top: number, right: number, bottom: number}} rect
+ * @returns {{x: number, y: number, width: number, height: number}}
+ */
+function rectToBounds(rect) {
+    return rect ? { x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top } : null;
 }
 
+/**
+ * @param {number} windowId
+ * @returns {{x: number, y: number, width: number, height: number}}
+ */
+function getWindowBounds(windowId) {
+    if (win) {
+        return rectToBounds(win.GetWindowRect(windowId));
+    }
+    return mac?.getWindowInfo(windowId | 0)?.bounds;
+}
+
+/**
+ * @param {number} windowId
+ * @returns {{id: number, title: string, bounds: {x: number, y: number, width: number, height: number}, pid: number, tid?: number, visible?: boolean}}
+ */
 function getWindowInfo(windowId) {
-    if (automationWin) {
-        let proc = automationWin.GetWindowThreadProcessId(windowId);
+    if (win) {
+        let proc = win.GetWindowThreadProcessId(windowId);
         if (!proc) { return null; }
-        let rect = automationWin.GetWindowRect(windowId);
-        if (!rect) { return null; }
         return {
             id: windowId,
+            title: win.GetWindowText(windowId),
+            bounds: rectToBounds(win.GetWindowRect(windowId)),
+            visible: win.IsWindowVisible(windowId) && !win.IsIconic(windowId),
             pid: proc.pid,
             tid: proc.tid,
-            title: automationWin.GetWindowText(windowId),
-            bounds: { x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top },
-            visible: automationWin.IsWindowVisible(windowId),
         }
     }
-    if (automationMac) {
-        return automationMac.getWindowInfo(windowId | 0);
+    if (mac) {
+        return mac.getWindowInfo(windowId | 0);
     }
     return null;
 }
 
+/**
+ * @param {boolean} all
+ * @returns {{id: number, title: string, bounds: {x: number, y: number, width: number, height: number}, pid: number, tid?: number, visible?: boolean}[]}
+ */
 function getWindows(all = false) {
-    if (automationMac) {
-        let windows = utomationMac.getWindows();
+    if (mac) {
+        let windows = win.getWindows();
         return all ? windows : windows.filter((w) => w.layer == 0);
     }
-    if (automationWin) {
+    if (win) {
         let windows = [];
-        automationWin.EnumWindows((hWnd) => {
-            (all || automationWin.IsWindowVisible(hWnd) && !automationWin.IsIconic(hWnd)) && windows.push(getWindowInfo(hWnd))
+        win.EnumWindows((hWnd) => {
+            (all || win.IsWindowVisible(hWnd) && !win.IsIconic(hWnd)) && windows.push(getWindowInfo(hWnd))
             return true;
         });
         return windows;
@@ -66,47 +75,67 @@ function getWindows(all = false) {
     return [];
 }
 
+/**
+ * @param {number} windowId
+ * @returns {boolean} succeeded
+ */
 function setForegroundWindow(windowId) {
-    if (automationWin) {
-        return automationWin.SetForegroundWindow(windowId);
+    if (win) {
+        return win.SetForegroundWindow(windowId);
     }
-    return automationMac?.setActiveWindow(windowId | 0) ?? false;
+    return mac?.setActiveWindow(windowId | 0) ?? false;
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @returns {number} windowId
+ */
 function windowFromPoint(x, y) {
-    if (automationWin) {
-        return automationWin.WindowFromPoint(x, y);
+    if (win) {
+        return win.WindowFromPoint(x, y);
     }
-    if (automationMac) {
-        let windows = automationMac.getWindows();
+    if (mac) {
+        let windows = mac.getWindows();
         let w = windows?.find(({ bounds: b, layer: l }) => l == 0 && b.x <= x && b.y <= y && b.x + b.width > x && b.y + b.height > y);
         return w?.id;
     }
     return null;
 }
 
+/**
+ * @returns {{x: number, y: number}}
+ */
 function getMousePos() {
-    if (automationWin) {
-        return automationWin.GetCursorPos();
-    } else if (automationMac) {
-        return automationMac.getMousePos();
+    if (win) {
+        return win.GetCursorPos();
+    } else if (mac) {
+        return mac.getMousePos();
     }
     return robot.getMousePos();
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ */
 function setMousePos(x, y) {
-    if (automationWin) {
-        return automationWin.SetCursorPos(x, y);
-    } else if (automationMac) {
-        return automationMac.setMousePos(x | 0, y | 0);
+    if (win) {
+        return win.SetCursorPos(x, y);
+    } else if (mac) {
+        return mac.setMousePos(x | 0, y | 0);
     }
     return robot.moveMouse(x, y);
 }
 
+/**
+ * @param {number} button 0:left, 1:middle, 2:right
+ * @param {boolean} down
+ */
 function toggleMouseButton(button, down) {
-    if (automationMac) {
-        return automationMac.toggleMouseButton(button | 0, down ? 1 : 0);
-    } else if (!automationWin) {
+    if (mac) {
+        return mac.toggleMouseButton(button | 0, down ? 1 : 0);
+    } else if (!win) {
         let buttonStr = ['left', 'middle', 'right'][button] || 'left';
         return robot.mouseToggle(down ? 'down' : 'up', buttonStr);
     }
@@ -123,11 +152,14 @@ function toggleMouseButton(button, down) {
             dwFlags = down ? 0x0008 : 0x0010;
             break;
     }
-    return automationWin.SendInput([{ mouse: { flags: dwFlags } }]);
+    return win.SendInput([{ mouse: { flags: dwFlags } }]);
 }
 
+/**
+ * @param {number} button 0:left, 1:middle, 2:right
+ */
 function click(button) {
-    if (automationWin || automationMac) {
+    if (win || mac) {
         toggleMouseButton(button, true);
         toggleMouseButton(button, false);
         return;
@@ -136,9 +168,12 @@ function click(button) {
     robot.mouseClick(buttonStr);
 }
 
+/**
+ * @return {{name: string, active: boolean, primary: boolean, bounds: {x: number, y: number, width: number, height: number}}[]}
+ */
 function getDisplays() {
     let displays = [];
-    if (!automationWin) {
+    if (!win) {
         // TODO
         let sz = robot.getScreenSize();
         displays.push({
@@ -150,13 +185,13 @@ function getDisplays() {
         return displays;
     }
     let d;
-    for (let i = 0; d = automationWin.EnumDisplayDevices(i); i++) {
-        let settings = automationWin.EnumDisplaySettings(d.deviceName);
+    for (let i = 0; d = win.EnumDisplayDevices(i); i++) {
+        let settings = win.EnumDisplaySettings(d.deviceName);
         if (settings == null) { continue; }
         displays.push({
             name: d.deviceString,
-            active: d.stateFlags & 1,
-            primary: d.stateFlags & 4,
+            active: (d.stateFlags & 1) != 0,
+            primary: (d.stateFlags & 4) != 0,
             bounds: { x: settings.x, y: settings.y, width: settings.width, height: settings.height },
             settings: settings,
         });
@@ -175,30 +210,30 @@ const robotjsKeys = {
 };
 
 /**
- * @param {string} key 
- * @param {boolean} down 
- * @param {string[]} modifiers 
+ * @param {string} key
+ * @param {boolean} down
+ * @param {string[]} modifiers 'Control', 'Shift', 'Alt', 'Meta'(Command)
  * @returns {boolean}
  */
 function toggleKey(key, down, modifiers = []) {
     if (key == 'Unidentified') {
         return false;
     }
-    if (automationWin) {
+    if (win) {
         let keys = [];
         let flags = down ? 0 : 0x0002;
         for (let mod of modifiers) {
-            let vk = automationWin.keyToVk(mod);
+            let vk = win.keyToVk(mod);
             vk && keys.push({ key: { vk: vk, flags: flags } });
         }
-        let vk = automationWin.keyToVk(key);
+        let vk = win.keyToVk(key);
         if (key.length == 1 && (vk == undefined || vk & 0x100 && modifiers.length == 0)) {
-            return automationWin.SendInput([{ key: { scan: key.charCodeAt(0), flags: flags | 0x0004 } }]);
+            return win.SendInput([{ key: { scan: key.charCodeAt(0), flags: flags | 0x0004 } }]) != 0;
         }
         if (vk == undefined) { return false; }
         keys.push({ key: { vk: vk, flags: flags } });
         if (!down) { keys.reverse(); }
-        return automationWin.SendInput(keys);
+        return win.SendInput(keys) != 0;
     }
 
     if (key == 'KanaMode' || key == 'HiraganaKatakana') {
@@ -217,15 +252,13 @@ function toggleKey(key, down, modifiers = []) {
         down && robot.typeString(key);
         return;
     }
-    robot.keyToggle(key, down ? 'down' : 'up', modifiers);
-
+    robot.keyToggle(key, down ? 'down' : 'up', modifiers.map(m => robotjsKeys[m] || m));
     return false;
 }
 
 /**
- * @param {string} key 
+ * @param {string} key
  * @param {string[]} modifiers
- * @returns {boolean}
  */
 function tapKey(key, modifiers = []) {
     toggleKey(key, true, modifiers);
@@ -233,9 +266,9 @@ function tapKey(key, modifiers = []) {
 }
 
 module.exports = {
-    getWindowRect: getWindowRect,
     getWindowInfo: getWindowInfo,
     getWindows: getWindows,
+    getWindowBounds: getWindowBounds,
     setForegroundWindow: setForegroundWindow,
     windowFromPoint: windowFromPoint,
     getMousePos: getMousePos,
