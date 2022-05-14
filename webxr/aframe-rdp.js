@@ -323,15 +323,17 @@ AFRAME.registerComponent('webrtc-rdp', {
 		};
 		// Grip
 		this._ongripdown = (ev) => {
-			let intersection = ev.target.components.raycaster.getIntersection(screenEl);
+			let raycaster = ev.target.components.raycaster;
+			let intersection = raycaster.intersectedEls[0] == screenEl && raycaster.getIntersection(screenEl);
 			if (intersection) {
-				startDrag(ev.target.components.raycaster.raycaster, intersection);
+				startDrag(raycaster.raycaster, intersection);
 			}
 		};
 		this._ongripup = (_) => stopDrag();
 		this._onbuttondown = (ev) => {
-			let intersection = ev.target.components.raycaster.getIntersection(screenEl);
-			if (intersection && screenEl.is('cursor-hovered')) {
+			let raycaster = ev.target.components.raycaster;
+			let intersection = raycaster.intersectedEls[0] == screenEl && raycaster.getIntersection(screenEl);
+			if (intersection) {
 				this.playerConn?.sendMouseEvent("click", intersection.uv.x, 1 - intersection.uv.y, ev.type == 'abuttondown' ? 1 : 2);
 				screenEl.focus();
 				ev.stopPropagation();
@@ -393,24 +395,20 @@ AFRAME.registerComponent('webrtc-rdp', {
 			map.needsUpdate = true;
 		});
 		screenEl.addEventListener('keydown', (ev) => {
-			if (this.playerConn?.state == "connected") {
-				let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
-				let k = ev.key;
-				if (!modkey && !ev.shiftKey && k.length == 1 && ev.getModifierState("CapsLock")) {
-					k = k.toLowerCase();
-				}
-				this.playerConn.sendKeyEvent(modkey ? 'down' : 'press', k, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
-				ev.preventDefault();
+			let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
+			let k = ev.key;
+			if (!modkey && !ev.shiftKey && k.length == 1 && ev.getModifierState("CapsLock")) {
+				k = k.toLowerCase();
 			}
+			this.playerConn?.sendKeyEvent(modkey ? 'down' : 'press', k, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+			ev.preventDefault();
 		});
 		screenEl.addEventListener('keyup', (ev) => {
-			if (this.playerConn?.state == "connected") {
-				let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
-				if (modkey) {
-					this.playerConn.sendKeyEvent('up', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
-				}
-				ev.preventDefault();
+			let modkey = ev.key == "Control" || ev.key == "Alt" || ev.key == "Shift";
+			if (modkey) {
+				this.playerConn?.sendKeyEvent('up', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
 			}
+			ev.preventDefault();
 		});
 		screenEl.focus();
 
@@ -440,7 +438,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 		}
 		showControls(false);
-		this.el.addEventListener('mouseenter', ev => { showControls(true); setTimeout(() => showControls(true), 0) });
+		this.el.addEventListener('mouseenter', ev => { ev.target != screenEl && setTimeout(() => showControls(true), 0) });
 		this.el.addEventListener('mouseleave', ev => showControls(false));
 		this.el.addEventListener('xyresize', ev => {
 			let r = ev.detail.xyrect;
