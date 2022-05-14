@@ -1,7 +1,7 @@
 // @ts-check
 const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
-const automation = require('./automation');
+const karakuri = require('karakurijs');
 // @ts-ignore
 const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = process.platform == 'darwin' ? require('mac-screen-capture-permissions') : {};
 
@@ -36,38 +36,38 @@ class InputManager {
     let { target, action, x, y, button } = mouseMessage;
     let windowId = this._getWindowId(target);
     if (windowId) {
-      action != 'move' && automation.setForegroundWindow(windowId);
+      action != 'move' && karakuri.setForegroundWindow(windowId);
       this.moveMouse_window(windowId, x, y);
     } else {
       let d = this.displays[target.display_id];
       this.moveMouse_display(d || screen.getPrimaryDisplay(), x, y);
     }
     if (action == 'click') {
-      automation.click(button);
+      karakuri.click(button);
     } else if (action == 'mouseup' || action == 'up') {
-      automation.toggleMouseButton(button, false);
+      karakuri.toggleMouseButton(button, false);
     } else if (action == 'mousedown' || action == 'down') {
-      automation.toggleMouseButton(button, true);
+      karakuri.toggleMouseButton(button, true);
     }
   }
   moveMouse_display(d, x, y) {
     let p = this._toScreenPoint(d, x, y);
-    automation.setMousePos(p.x, p.y)
+    karakuri.setMousePos(p.x, p.y)
   }
   moveMouse_window(windowId, x, y) {
-    let bounds = automation.getWindowBounds(windowId);
+    let bounds = karakuri.getWindowBounds(windowId);
     if (bounds) {
-      automation.setMousePos(bounds.x + bounds.width * x, bounds.y + bounds.height * y)
+      karakuri.setMousePos(bounds.x + bounds.width * x, bounds.y + bounds.height * y)
     }
   }
   sendKey(keyMessage) {
     let { target, action, key, modifiers } = keyMessage;
     let windowId = this._getWindowId(target);
-    windowId && automation.setForegroundWindow(windowId);
+    windowId && karakuri.setForegroundWindow(windowId);
     if (action == 'press') {
-      automation.tapKey(key, modifiers);
+      karakuri.tapKey(key, modifiers);
     } else {
-      automation.toggleKey(key, action == 'down', modifiers);
+      karakuri.toggleKey(key, action == 'down', modifiers);
     }
   }
   streamFromPoint(target, x, y) {
@@ -77,11 +77,11 @@ class InputManager {
       return null;
     }
     let p = this._toScreenPoint(d, x, y);
-    let hWnd = automation.windowFromPoint(p.x, p.y);
+    let hWnd = karakuri.windowFromPoint(p.x, p.y);
     if (!hWnd) {
       return null;
     }
-    let bounds = automation.getWindowBounds(hWnd);
+    let bounds = karakuri.getWindowBounds(hWnd);
     let r = null;
     if (bounds) {
       let p0 = this._fromScreenPoint(d, bounds.x, bounds.y);

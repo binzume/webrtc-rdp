@@ -1,6 +1,6 @@
-// bash -c "TEST_MODE=1 ELECTRON_RUN_AS_NODE=1 electron test/automation_test.js"
+// bash -c "TEST_MODE=1 ELECTRON_RUN_AS_NODE=1 electron karakurijs/test/automation_test.js"
 
-const automation = require('../automation');
+const automation = require('../index');
 
 
 let pos = automation.getMousePos();
@@ -22,5 +22,5 @@ automation.tapKey('あ');
 if (process.platform == 'darwin') {
     automation.tapKey('a', ['command']);
 } else {
-    automation.tapKey('a', ['control']);
+    automation.tapKey('a', ['Control']);
 }

@@ -24,16 +24,12 @@
     "electron-rebuild": "^3.2.7"
   },
   "dependencies": {
-    "@open-ayame/ayame-web-sdk": "^2022.1.0"
+    "@open-ayame/ayame-web-sdk": "^2022.1.0",
+    "karakurijs": "file:karakurijs"
   },
   "build": {
     "appId": "net.binzume.webrtc-rdp",
     "productName": "WebRTC Remote Desktop",
     "npmRebuild": false
-  },
-  "optionalDependencies": {
-    "automation-mac": "file:automation-mac",
-    "automation-win": "file:automation-win",
-    "automation-robotjs": "file:automation-robotjs"
   }
 }

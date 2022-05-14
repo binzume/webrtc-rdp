@@ -1,0 +1,18 @@
+{
+  "name": "karakurijs",
+  "version": "0.0.0",
+  "description": "Desktop automation module for Node.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/automation_test.js"
+  },
+  "repository": "https://github.com/binzume/webrtc-rdp",
+  "keywords": [],
+  "author": "binzume",
+  "license": "MIT",
+  "optionalDependencies": {
+    "karakurijs-mac": "file:karakurijs-mac",
+    "karakurijs-win": "file:karakurijs-win",
+    "karakurijs-robotjs": "file:karakurijs-robotjs"
+  }
+}

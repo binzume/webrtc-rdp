@@ -1,11 +1,11 @@
 // @ts-check
-const win = process.platform == 'win32' ? require('automation-win') : null;
+const win = process.platform == 'win32' ? require('karakurijs-win') : null;
 const mac = process.platform == 'darwin' ? (() => {
     try {
         // @ts-ignore
-        return require('automation-mac');
+        return require('karakurijs-mac');
     } catch {
-        console.log('ERROR: Could not load automation-mac.');
+        console.log('ERROR: Could not load karakurijs-mac.');
     }
 })() : null;
 
@@ -252,7 +252,7 @@ function toggleKey(key, down, modifiers = []) {
         down && robot.typeString(key);
         return;
     }
-    robot.keyToggle(key, down ? 'down' : 'up', modifiers.map(m => robotjsKeys[m] || m));
+    robot.keyToggle(key, down ? 'down' : 'up', modifiers.map(m => robotjsKeys[m] || m.toLowerCase()));
     return false;
 }
 

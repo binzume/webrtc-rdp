@@ -1,16 +1,15 @@
 {
-  "name": "automation-robotjs",
+  "name": "karakurijs-win",
   "version": "0.0.0",
   "description": "",
+  "main": "index.js",
   "scripts": {},
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [],
   "author": "binzume",
   "license": "MIT",
-  "devDependencies": {
-  },
   "dependencies": {
-    "hurdle-robotjs": "^0.6.7"
+    "ffi-napi": "^4.0.3"
   },
-  "os": ["!win32"]
+  "os": ["win32"]
 }
