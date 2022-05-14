@@ -265,6 +265,23 @@ function tapKey(key, modifiers = []) {
     toggleKey(key, false, modifiers);
 }
 
+/**
+ * @param {string} permission 
+ * @returns {boolean}
+ */
+function requestPermission(permission) {
+    if (permission == 'screenCapture' && process.platform == 'darwin') {
+        // @ts-ignore
+        const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
+        if (!hasPromptedForPermission()) {
+            hasScreenCapturePermission();
+        } else {
+            openSystemPreferences();
+        }
+    }
+    return true;
+}
+
 module.exports = {
     getWindowInfo: getWindowInfo,
     getWindows: getWindows,
@@ -278,4 +295,5 @@ module.exports = {
     toggleKey: toggleKey,
     tapKey: tapKey,
     getDisplays: getDisplays,
+    requestPermission: requestPermission,
 };

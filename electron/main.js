@@ -2,8 +2,6 @@
 const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, systemPreferences } = require('electron');
 const path = require('path');
 const karakuri = require('karakurijs');
-// @ts-ignore
-const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = process.platform == 'darwin' ? require('mac-screen-capture-permissions') : {};
 
 class InputManager {
   constructor() {
@@ -159,13 +157,7 @@ let rdp;
 app.whenReady().then(() => {
   if (systemPreferences.getMediaAccessStatus('screen') != 'granted') {
     console.log('ERROR: No screen capture permission');
-    if (process.platform == 'darwin') {
-      if (!hasPromptedForPermission()) {
-        hasScreenCapturePermission();
-      } else {
-        openSystemPreferences();
-      }
-    }
+    karakuri.requestPermission('screenCapture');
   }
 
   rdp = new RDPApp();
