@@ -159,6 +159,9 @@ app.whenReady().then(() => {
     console.log('ERROR: No screen capture permission');
     karakuri.requestPermission('screenCapture');
   }
+  if (!karakuri.requestPermission('accessibility')) {
+    console.log('ERROR: No accessibility permission');
+  }
 
   rdp = new RDPApp();
 

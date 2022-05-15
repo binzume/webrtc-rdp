@@ -57,6 +57,10 @@ windowId: hWnd(Windows) or window number(MacOS)
 
 - getDisplays()
 
+### Permissions
+
+- requestPermission(screenCapture | accessibility)
+
 
 ## License
 

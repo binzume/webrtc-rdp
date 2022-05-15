@@ -212,7 +212,7 @@ const robotjsKeys = {
     ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down',
     F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F5: 'f5', F6: 'f6',
     F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
-    ' ': 'space', 'Space': 'space', CapsLock: '',
+    ' ': 'space', 'Space': 'space', CapsLock: 'command'
 };
 
 /**
@@ -242,13 +242,13 @@ function toggleKey(key, down, modifiers = []) {
         return win.SendInput(keys) != 0;
     }
 
-    if (key == 'KanaMode' || key == 'HiraganaKatakana') {
+    if (key == 'KanaMode' || key == 'HiraganaKatakana' || key == 'Convert') {
         // Robot.js doesn't support KanaMode key.
         key = ' ';
-        modifiers = ['control'];
+        modifiers = ['command'];
     }
 
-    if (robotjsKeys[key]) {
+    if (robotjsKeys[key] != null) {
         key = robotjsKeys[key];
     } else if (/^[A-Za-z0-9]$/.test(key)) {
         if (/[A-Z]/.test(key)) {
@@ -259,7 +259,7 @@ function toggleKey(key, down, modifiers = []) {
         down && robot.typeString(key);
         return;
     }
-    robot.keyToggle(key, down ? 'down' : 'up', modifiers.map(m => robotjsKeys[m] || m.toLowerCase()));
+    robot.keyToggle(key, down ? 'down' : 'up', modifiers.map(m => robotjsKeys[m] || m.toLowerCase()).filter(m => m != key));
     return false;
 }
 
@@ -277,7 +277,10 @@ function tapKey(key, modifiers = []) {
  * @returns {boolean}
  */
 function requestPermission(permission) {
-    if (permission == 'screenCapture' && process.platform == 'darwin') {
+    if (process.platform != 'darwin') {
+        return true;
+    }
+    if (permission == 'screenCapture') {
         // @ts-ignore
         const { hasScreenCapturePermission, hasPromptedForPermission, openSystemPreferences } = require('mac-screen-capture-permissions');
         if (!hasPromptedForPermission()) {
@@ -285,6 +288,9 @@ function requestPermission(permission) {
         } else {
             openSystemPreferences();
         }
+    }
+    if (permission == 'accessibility') {
+        return mac.isProcessTrusted();
     }
     return true;
 }

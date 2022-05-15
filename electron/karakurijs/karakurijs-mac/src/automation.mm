@@ -332,6 +332,37 @@ static napi_value toggleMouseButton(napi_env env, napi_callback_info info) {
   return nullptr;
 }
 
+static napi_value isProcessTrusted(napi_env env, napi_callback_info info) {
+  napi_status status;
+  bool trusted = false;
+
+  if (@available(macOS 10.9, *)) {
+    NSDictionary *options = @{(id)kAXTrustedCheckOptionPrompt : @YES};
+    trusted = AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
+  } else {
+    trusted = AXIsProcessTrusted();
+  }
+  napi_value ret;
+  status = napi_get_boolean(env, trusted, &ret);
+  assert(status == napi_ok);
+  return ret;
+}
+
+static napi_value hasScreenCaptureAccess(napi_env env, napi_callback_info info) {
+  napi_status status;
+  bool success = true;
+
+  if (@available(macOS 11.0, *)) {
+    success = CGPreflightScreenCaptureAccess();
+  } else if (@available(macOS 10.15, *)) {
+    success = false;  // TODO
+  }
+  napi_value ret;
+  status = napi_get_boolean(env, success, &ret);
+  assert(status == napi_ok);
+  return ret;
+}
+
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
       {"getWindowInfo", 0, getWindowInfo, 0, 0, 0, napi_default, 0},
@@ -340,6 +371,8 @@ napi_value Init(napi_env env, napi_value exports) {
       {"getMousePos", 0, getMousePos, 0, 0, 0, napi_default, 0},
       {"setMousePos", 0, setMousePos, 0, 0, 0, napi_default, 0},
       {"toggleMouseButton", 0, toggleMouseButton, 0, 0, 0, napi_default, 0},
+      {"isProcessTrusted", 0, isProcessTrusted, 0, 0, 0, napi_default, 0},
+      {"hasScreenCaptureAccess", 0, hasScreenCaptureAccess, 0, 0, 0, napi_default, 0},
   };
   napi_status status = napi_define_properties(
       env, exports, sizeof(properties) / sizeof(napi_property_descriptor), properties);
