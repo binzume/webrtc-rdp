@@ -77,13 +77,19 @@ function getWindows(all = false) {
 
 /**
  * @param {number} windowId
- * @returns {boolean} succeeded
+ * @returns {Promise<boolean>} succeeded
  */
-function setForegroundWindow(windowId) {
+async function setForegroundWindow(windowId) {
     if (win) {
         return win.SetForegroundWindow(windowId);
     }
-    return mac?.setActiveWindow(windowId | 0) ?? false;
+    if (mac) {
+        let result = mac.setActiveWindow(windowId | 0);
+        // Wait for window focus (FIXME)
+        result && await new Promise((resolve) => setTimeout(resolve, 50));
+        return result;
+    }
+    return false;
 }
 
 /**
@@ -206,7 +212,7 @@ const robotjsKeys = {
     ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down',
     F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F5: 'f5', F6: 'f6',
     F7: 'f7', F8: 'f8', F9: 'f9', F10: 'f10', F11: 'f11', F12: 'f12',
-    ' ': 'space', 'Space': 'space'
+    ' ': 'space', 'Space': 'space', CapsLock: '',
 };
 
 /**
@@ -245,8 +251,9 @@ function toggleKey(key, down, modifiers = []) {
     if (robotjsKeys[key]) {
         key = robotjsKeys[key];
     } else if (/^[A-Za-z0-9]$/.test(key)) {
-        if (modifiers.length == 0 && /[A-Z]/.test(key)) {
-            modifiers.push('shift');
+        if (/[A-Z]/.test(key)) {
+            key = key.toLocaleLowerCase();
+            modifiers.length == 0 && modifiers.push('shift');
         }
     } else {
         down && robot.typeString(key);

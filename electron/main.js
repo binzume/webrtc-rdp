@@ -30,11 +30,11 @@ class InputManager {
     let m = target?.id?.match(/^window:(\d+):/);
     return m ? m[1] : null;
   }
-  sendMouse(mouseMessage) {
+  async sendMouse(mouseMessage) {
     let { target, action, x, y, button } = mouseMessage;
     let windowId = this._getWindowId(target);
     if (windowId) {
-      action != 'move' && karakuri.setForegroundWindow(windowId);
+      action != 'move' && await karakuri.setForegroundWindow(windowId);
       this.moveMouse_window(windowId, x, y);
     } else {
       let d = this.displays[target.display_id];
@@ -58,7 +58,7 @@ class InputManager {
       karakuri.setMousePos(bounds.x + bounds.width * x, bounds.y + bounds.height * y)
     }
   }
-  sendKey(keyMessage) {
+  async sendKey(keyMessage) {
     let { target, action, key, modifiers } = keyMessage;
     let windowId = this._getWindowId(target);
     windowId && karakuri.setForegroundWindow(windowId);
@@ -167,10 +167,10 @@ app.whenReady().then(() => {
     await inputManager.updateSources(types);
     return inputManager.getSourceInfos();
   });
-  ipcMain.handle('sendMouse', async (event, mouseMessage) => {
+  ipcMain.handle('sendMouse', (event, mouseMessage) => {
     return inputManager.sendMouse(mouseMessage);
   });
-  ipcMain.handle('sendKey', async (event, keyMessage) => {
+  ipcMain.handle('sendKey', (event, keyMessage) => {
     return inputManager.sendKey(keyMessage);
   });
   ipcMain.handle('streamFromPoint', async (event, params) => {
