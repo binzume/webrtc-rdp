@@ -1,7 +1,7 @@
 // Run test on electron:
 // bash -c "TEST_MODE=1 ELECTRON_RUN_AS_NODE=1 electron karakurijs/test/karakurijs_test.js"
 
-const karakuri = require('karakurijs');
+const karakuri = require('..');
 
 let pos = karakuri.getMousePos();
 console.log(pos);
@@ -15,7 +15,8 @@ karakuri.click();
 
 karakuri.tapKey('a');
 karakuri.tapKey('!');
-karakuri.tapKey('あ');
+karakuri.tapKey('こ');
+karakuri.typeString('んにちは!!🍣');
 
 if (process.platform == 'darwin') {
     karakuri.tapKey('a', ['Command']);

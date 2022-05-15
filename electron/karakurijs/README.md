@@ -2,7 +2,18 @@
 
 Desktop automation module for Node.js
 
+- DOM event friendly mouse and keyboard functions
+- Support more special keys in Windows
+- Functions for window, display, permissions
+
+The purpose of this package is to complement RobotJS.
+
+
 # Usage
+
+```sh
+npm install karakurijs
+```
 
 ```js
 const karakuri = require('karakurijs');
@@ -33,23 +44,25 @@ if (process.platform == 'darwin') {
 ### Mouse
 
 - getMousePos()
-- setMousePos(x, y)
-- click(button)
-- toggleMouseButton(button, down)
+- setMousePos(x: number, y: number)
+- click(button: number)
+- toggleMouseButton(button: number, down: number)
 
-button: 0: left, 1: middle, 2: right
+button: 0: left, 1: middle, 2: right (same as MouseEvent.button)
 
 ### Keyboad
 
-- toggkeKey(key, down, modifiers)
-- tapKey(key, modifiers)
+- toggkeKey(key: string, down: boolean, modifiers: string[])
+- tapKey(key: string, modifiers: string[])
+
+key: Same string as [KeyboardEvent.key](https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values)
 
 ### Window
 
 - getWindows()
-- getWindowInfo(windowId)
-- getWindowBounds(windowId)
-- setForegroundWindow(windowId)
+- getWindowInfo(windowId: number)
+- getWindowBounds(windowId: number)
+- setForegroundWindow(windowId: number)
 
 windowId: hWnd(Windows) or window number(MacOS)
 
@@ -59,7 +72,7 @@ windowId: hWnd(Windows) or window number(MacOS)
 
 ### Permissions
 
-- requestPermission(screenCapture | accessibility)
+- requestPermission('screenCapture' | 'accessibility')
 
 
 ## License

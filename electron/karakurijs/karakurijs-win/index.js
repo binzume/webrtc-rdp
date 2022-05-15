@@ -65,12 +65,12 @@ function SendInput(inputs) {
         if (input.mouse) {
             buf.writeInt32LE(input.mouse.dx || 0, sz * i + offset);
             buf.writeInt32LE(input.mouse.dy || 0, sz * i + offset + 4);
-            buf.writeInt32LE(input.mouse.flags, sz * i + offset + 12);
+            buf.writeUInt32LE(input.mouse.flags, sz * i + offset + 12);
         } else if (input.key) {
             buf.writeInt32LE(1, sz * i);
-            buf.writeInt16LE(input.key.vk, sz * i + offset);
-            buf.writeInt16LE(input.key.scan, sz * i + offset + 2);
-            buf.writeInt32LE(input.key.flags, sz * i + offset + 4);
+            buf.writeUInt16LE(input.key.vk, sz * i + offset);
+            buf.writeUInt16LE(input.key.scan, sz * i + offset + 2);
+            buf.writeUInt32LE(input.key.flags, sz * i + offset + 4);
         }
     });
     return user32.SendInput(inputs.length, buf, sz);

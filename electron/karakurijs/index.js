@@ -273,6 +273,21 @@ function tapKey(key, modifiers = []) {
 }
 
 /**
+ * @param {string} text 
+ */
+function typeString(text) {
+    if (win) {
+        let keys = [];
+        for (let i = 0; i < text.length; i++) {
+            keys.push({ key: { scan: text.charCodeAt(i), flags: 0x0004 } }, { key: { scan: text.charCodeAt(i), flags: 2 | 0x0004 } });
+        }
+        win.SendInput(keys);
+    } else {
+        robot?.typeString(text);
+    }
+}
+
+/**
  * @param {string} permission 
  * @returns {boolean}
  */
@@ -307,6 +322,7 @@ module.exports = {
     toggleMouseButton: toggleMouseButton,
     toggleKey: toggleKey,
     tapKey: tapKey,
+    typeString: typeString,
     getDisplays: getDisplays,
     requestPermission: requestPermission,
 };
