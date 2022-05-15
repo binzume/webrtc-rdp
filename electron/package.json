@@ -8,7 +8,7 @@
     "start-debug": "electron . --debug",
     "prepare": "npx electron-rebuild",
     "build-win": "npx electron-builder --win --x64",
-    "build-macos": "npx electron-builder --mac --x64 --dir"
+    "build-mac": "npx electron-builder --mac --x64 --dir"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [
@@ -30,6 +30,15 @@
   "build": {
     "appId": "net.binzume.webrtc-rdp",
     "productName": "WebRTC Remote Desktop",
-    "npmRebuild": false
+    "npmRebuild": false,
+    "files": [
+      "!**/*.{vcxproj,ilk,exp,lib,tlog,ts,c,cc,mm,h}",
+      "!**/.*",
+      "!karakurijs",
+      "!node_modules/karakurijs/karakurijs-*",
+      "!node_modules/ffi-napi/{deps,src,bin,prebuilds,build/deps}",
+      "!node_modules/ref-napi/{docs,include}",
+      "!**/node-addon-api/*"
+    ]
   }
 }
