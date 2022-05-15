@@ -360,6 +360,12 @@ class ConnectionManager {
         let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + "." + id, mediaStream, messageHandler);
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
+        if (globalThis.rtcFileServer) {
+            // See fileserver.js
+            // TODO: Remove global variable.
+            console.log('start fileServer');
+            conn.dataChannels['fileServer'] = globalThis.rtcFileServer.getRtcChannelSpec();
+        }
 
         let info = { conn: conn, id: id, name: name, permanent: permanent };
         this._connections.push(info);
