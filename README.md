@@ -12,7 +12,7 @@ Demo URL:
 
 ## Usage
 
-1. https://binzume.github.io/webrtc-rdp/ にアクセスします
+1. ブラウザで https://binzume.github.io/webrtc-rdp/ にアクセスするか，またはElectron App版のアプリを起動してください
 2. (初回のみ)接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
 3. 「Share Desktop」または「Share Camera」ボタンで共有したいストリームを追加してください．
 4. 「Open Remote Desktop」ボタンをクリックすると，相手側のデスクトップに接続します．複数のストリームがある場合は選択画面が表示されます．
@@ -20,11 +20,19 @@ Demo URL:
 - [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードでPCのデスクトップに接続できます (Oculus Quest用)
 - 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
 
-## Mouse/Keyboard
+### Mouse/Keyboard
 
-ブラウザ上からはマウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，下記のElectron App版をインストールしてください．
+マウスやキーボードを使いたい場合は，下記のElectron App版を使ってください．
 
+ブラウザ上からはマウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，
 どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動し表示されたURLをフォームに入力することで使えるようになります．
+
+### ファイル共有
+
+ホスト側の画面にファイルやディレクトリをドラッグ＆ドロップすると共有されます．
+
+- WebXR版のクライアントの `Storage` に追加されます．
+- まだWebXR以外のUIを用意してないです
 
 ## Electron App
 
@@ -77,8 +85,7 @@ Oculus Touchコントローラーのボタン割当:
 ## TODO
 
 - WebXR時にレンダリング面積に合わせて元のvideo解像度を変える
-- UIをまともにする
-- クリップボード・ファイル共有機能
+- クリップボード共有機能
 
 ## License
 
