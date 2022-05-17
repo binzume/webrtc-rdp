@@ -4,8 +4,8 @@
   <link rel="stylesheet" type="text/css" href="style.css" />
   <title>WebRTC Remote Desktop</title>
   <script src="node_modules/@open-ayame/ayame-web-sdk/dist/ayame.min.js"></script>
-  <script src="webrtc-rdp.js?20220515"></script>
-  <script src="fileserver.js?20220515"></script>
+  <script src="rtcfilesystem-server.js?20220516"></script>
+  <script src="webrtc-rdp.js?20220516"></script>
 </head>
 
 <body>
@@ -36,6 +36,7 @@
       <button class="browser" id="clearSettingsButton">Reset Settings</button>
     </div>
     <div id="devices"></div>
+    <ul id="files" class="streamlist"></ul>
     <div class="browser" style="border: 2px solid #ccc">
       Input proxy: <input id="inputProxyUrl" />
       <button id="connectInputButton">Connect</button> <br />
