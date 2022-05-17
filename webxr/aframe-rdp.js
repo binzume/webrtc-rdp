@@ -166,8 +166,8 @@ class BaseConnection {
 			c.ch = ch;
 			ch.onmessage = c.onmessage?.bind(ch, ch);
 			// NOTE: dataChannel.onclose = null in Ayame web sdk.
-			c.onopen && ch.addEventListener('open', c.onopen.bind(ch, ch));
-			c.onclose && ch.addEventListener('close', c.onclose.bind(ch, ch));
+			c.onopen && ch.addEventListener('open', c.onopen.bind(c, ch));
+			c.onclose && ch.addEventListener('close', c.onclose.bind(c, ch));
 		}
 	}
 }
@@ -502,6 +502,10 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		// connect
 		this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
+		if (globalThis.rtcFileSystemManager) {
+			// defined in ../electron/rtcfilesystem-client.js
+			this.playerConn.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP_' + settings.roomId, 'RDP_' + data.settingIndex);
+		}
 		this.playerConn.connect();
 	},
 	disconnect() {
