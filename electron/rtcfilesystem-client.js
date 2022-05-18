@@ -5,7 +5,12 @@ class RTCFileSystemClient {
     constructor() {
         /** @type {(WebSocket | RTCDataChannel)[]} */
         this.sockets = [];
+        this.available = false;
+        this.disconnectDelayMs = 5000;
+        this.ondisconnected = null;
+        this._disconnectTimer = null;
         this._seq = 0;
+        /** @type {Record<string, {resolve:any, reject:any}} */
         this._req = {};
     }
     /** @returns {Promise<RTCFileSystemFileStat>} */
@@ -94,20 +99,29 @@ class RTCFileSystemClient {
     }
 
     addSocket(socket) {
+        clearTimeout(this._disconnectTimer);
+        this._disconnectTimer = null;
         this.sockets.push(socket);
+        this.available = true;
     }
     removeSocket(socket) {
         this.sockets = this.sockets.filter(s => s != socket);
-        if (this.sockets.length == 0) { this.reset(); }
+        if (this.sockets.length == 0) {
+            this.reset();
+            this._disconnectTimer = setTimeout(() => {
+                this.available = false;
+                this.ondisconnected?.();
+            }, this.disconnectDelayMs);
+        }
     }
     reset() {
         for (let r of Object.values(this._req)) { r.reject('reset'); }
-        this.sockets = [];
         this._req = {};
+        this.sockets = [];
     }
 }
 
-/** @typedef {{name: string, type: string, size: number, updatedTime: number, tags: string[], path:string, [k:string]: any}} RTCFileSystemClientFile */
+/** @typedef {{name: string, type: string, size: number, updatedTime: number, tags: string[], path:string, thumbnail:any, [k:string]: any}} RTCFileSystemClientFile */
 
 class RTCFileSystemClientFolder {
     /**
@@ -120,14 +134,13 @@ class RTCFileSystemClientFolder {
         this.name = name;
         this.path = path;
         this.size = -1; // unknown size
-        this.thumbnailUrl = null;
-
         this._client = client;
         this._options = options;
         this._pageSize = 100;
         this._pageCacheMax = 5;
         /** @type {Map<number, {value?: RTCFileSystemClientFile[], task?: Promise<RTCFileSystemClientFile[]>, ac?: AbortController}>} */
         this._pageCache = new Map();
+        this.onupdate = null;
     }
 
     async init() {
@@ -139,6 +152,9 @@ class RTCFileSystemClientFolder {
      */
     async get(position) {
         if (position < 0 || this.size >= 0 && position >= this.size) throw "out of range";
+        if (!this._client.available) {
+            return null;
+        }
         let item = this._getOrNull(position);
         if (item != null) {
             return item;
@@ -197,11 +213,9 @@ class RTCFileSystemClientFolder {
                 size: f.size,
                 updatedTime: f.updatedTime,
                 tags: f.metadata?.tags || [],
-                url: null, // use fetch()
-                thumbnailUrl: null, // use thumbnail.fetch()
                 path: dir + f.name,
                 async fetch(start = 0, end = -1) {
-                    return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type } });
+                    return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type, 'Content-Length': '' + f.size } });
                 },
                 update(blob) { return client.write(dir + f.name, 0, blob); },
                 remove() { return client.remove(dir + f.name); },
@@ -218,7 +232,11 @@ class RTCFileSystemClientFolder {
             this._pageCache.set(page, { task, ac });
             let result = await task;
             if (result.length > 0) {
-                this.size = Math.max(page * this._pageSize + result.length + (result.length >= this._pageSize ? 1 : 0), this.size);
+                let sz = page * this._pageSize + result.length + (result.length >= this._pageSize ? 1 : 0);
+                if (sz > this.size) {
+                    this.size = sz;
+                    this.onupdate?.();
+                }
             }
             if (this._pageCache.has(page)) {
                 this._pageCache.set(page, { value: result });
@@ -256,17 +274,19 @@ class RTCFileSystemManager {
                             getList: (folder, options) => new RTCFileSystemClientFolder(this._clients[id], folder, folder || name, options)
                         };
                     }
+                    this._clients[id].ondisconnected = () => {
+                        console.log('FileSystemClient: disconnected ' + id);
+                        this._clients[id].ondisconnected = null;
+                        delete this._clients[id];
+                        if (globalThis.storageAccessors) {
+                            delete globalThis.storageAccessors[id];
+                        }
+                    };
                 }
                 this._clients[id].addSocket(ch);
             },
             onclose: (ch, _ev) => {
                 this._clients[id]?.removeSocket(ch);
-                if (this._clients[id]?.sockets.length == 0) {
-                    delete this._clients[id];
-                    if (globalThis.storageAccessors) {
-                        delete globalThis.storageAccessors[id];
-                    }
-                }
             },
             onmessage: (_ch, ev) => this._clients[id].handleEvent(ev)
         };
