@@ -70,6 +70,10 @@ class InputManager {
   }
   streamFromPoint(target, x, y) {
     let d = this.displays[target.display_id];
+    if (d == null && target.id?.startsWith('screen:0:')) {
+      console.log('primary display?', target.id);
+      d = screen.getPrimaryDisplay();
+    }
     if (d == null) {
       console.log('invalid target: ', target);
       return null;
