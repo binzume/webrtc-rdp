@@ -504,7 +504,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
 		if (globalThis.rtcFileSystemManager) {
 			// defined in ../electron/rtcfilesystem-client.js
-			this.playerConn.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP_' + settings.roomId, 'RDP_' + data.settingIndex);
+			this.playerConn.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + data.settingIndex);
 		}
 		this.playerConn.connect();
 	},
