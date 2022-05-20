@@ -21,14 +21,17 @@
     <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingIndex:0" xyresize="" scale='0.2 0.2 0.2' width="8" height="6" position="0 1.5 -1.5" xycontainer="direction:column">
       <a-video name="screen" class="collidable" width="8" height="6" src="" material="npot:true;shader: flat;"></a-video>
       <a-entity xyrect="height:0">
-        <a-xycontainer class="control" width="3.2" height="1.0" position="0 -0.6 0.05" direction="column" spacing="0" justify-items="center">
-          <a-entity xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:3.2;height:1.0" position="0 0 -0.02" material="color:#444; opacity:0.8"></a-entity>
-          <a-xycontainer class="control" width="3.0" height="0.4" position="0 -0.4 0.05" direction="row" spacing="0.1" justify-items="center">
+        <a-xycontainer class="control" width="3.2" height="1.0" position="0 -0.6 0.05" direction="column" spacing="0.1" justify-items="center">
+          <a-entity class="collidable" xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:3.2;height:1.0" position="0 0 -0.02" material="color:#444; opacity:0.8"></a-entity>
+          <a-xycontainer class="control" width="3.0" height="0.4" direction="row" spacing="0.1" justify-items="center">
             <a-xybutton name="roomPrev" width="0.4" height="0.4" label="&lt;"></a-xybutton>
             <a-xylabel name="roomName" width="2.0" height="0.4" value="room"></a-xylabel>
             <a-xybutton name="roomNext" width="0.4" height="0.4" label="&gt;"></a-xybutton>
           </a-xycontainer>
-          <a-xybutton name="connectButton" width="1.4" height="0.5" label="Connect"></a-xybutton>
+          <a-xycontainer class="control" width="3.0" height="0.4" direction="row" spacing="0.1" justify-items="center">
+            <a-xybutton name="connectButton" width="1.4" height="0.4" label="Connect"></a-xybutton>
+            <a-xybutton name="kbdButton" width="0.5" height="0.4" label="KBD"></a-xybutton>
+          </a-xycontainer>
         </a-xycontainer>
       </a-entity>
     </a-xywindow>
@@ -37,6 +40,7 @@
       <a-camera position="0 1.5 0" look-controls="enabled:false"></a-camera>
       <a-entity laser-controls="hand: right" raycaster="far:Infinity;objects:.collidable" line="color: #3060a0; opacity: 0.5"></a-entity>
       <a-entity laser-controls="hand: left" raycaster="far:Infinity;objects:.collidable" line="color: #3060a0; opacity: 0.5"></a-entity>
+      <a-xykeyboard distance="0.7" scale='0.22 0.22 0.22' position="0 0.9 -1" rotation='-30 0 0'></a-xykeyboard>
     </a-entity>
 
   </a-scene>

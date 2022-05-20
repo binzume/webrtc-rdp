@@ -449,6 +449,10 @@ AFRAME.registerComponent('webrtc-rdp', {
 				}
 			}
 		});
+
+		this._byName('kbdButton').addEventListener('click', ev => {
+			this.el.emit('xykeyboard-request', '');
+		});
 	},
 	update(oldData) {
 		let d = Settings.getPeerDevices()[this.data.settingIndex];
