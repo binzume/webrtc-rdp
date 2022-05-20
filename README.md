@@ -1,10 +1,11 @@
 # WebRTC + WebXR Remote Desktop
 
-WebRTCとWebXRを使ったブラウザ上で動くリモートデスクトップです．WebXRではない通常表示も可能です．
+WebRTCとWebXRを使ったブラウザ上で動作するリモートデスクトップです．
 
 ![Screenshot](screenshot-xr.png)
 
-最近の Chrome や Edge で動くはずです．VRモードは Oculus Quest 2 の Oculus Browser で動作確認しています．
+最近の Chrome や Edge で動くはずです．VRモードと通常表示が可能です．
+VRモードは Oculus Quest 2 の Oculus Browser で動作確認しています．
 
 Demo URL:
 - https://binzume.github.io/webrtc-rdp/
@@ -12,10 +13,10 @@ Demo URL:
 
 ## Usage
 
-1. ブラウザで https://binzume.github.io/webrtc-rdp/ にアクセスするか，またはElectron App版のアプリを起動してください
-2. (初回のみ)接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください
-3. 「Share Desktop」または「Share Camera」ボタンで共有したいストリームを追加してください．
-4. 「Open Remote Desktop」ボタンをクリックすると，相手側のデスクトップに接続します．複数のストリームがある場合は選択画面が表示されます．
+1. ブラウザで https://binzume.github.io/webrtc-rdp/ にアクセスするか，または下記のアプリを起動してください
+2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください (初回のみ)
+3. 「Share Desktop」または「Share Camera」ボタンで共有したいストリームを選択してください (ブラウザ版のみ)
+4. 「Open Remote Desktop」ボタンをクリックすると，相手側のデスクトップに接続します．複数のストリームがある場合は選択画面が表示されます
 
 - [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードでPCのデスクトップに接続できます (Oculus Quest用)
 - 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
@@ -31,14 +32,14 @@ Demo URL:
 
 ホスト側の画面にファイルやディレクトリをドラッグ＆ドロップすると共有されます．
 
-- WebXR版のクライアントの `Storage` に追加されます．
+- WebXR版のクライアントの `Storage` に追加されます
 - まだWebXR以外のUIを用意してないです
 
 ## Electron App
 
 Chromeを起動していなくても単体で動くアプリケーションです．マウスやキーボードも使えます．
 
-[Releases](https://github.com/binzume/webrtc-rdp/releases/latest)からWindows用のインストーラがダウンロードできます．
+[Releases](https://github.com/binzume/webrtc-rdp/releases/latest)ページからWindows用のインストーラがダウンロードできます．
 
 インストールせずに利用する場合や開発時は以下のように起動してください．
 
@@ -52,7 +53,7 @@ npm start
 
 Node.jsのネイティブモジュールのビルドができる環境が必要です．
 `npm run build-win` で実行ファイルをビルドできます．
-MacOSでも動く気がしますが，Windowsでのみで動作確認しています．
+MacOSやLinuxでも動くように実装していますが，Windowsでのみで動作確認しています．
 
 # Design
 
