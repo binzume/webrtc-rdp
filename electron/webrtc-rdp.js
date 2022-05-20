@@ -3,10 +3,9 @@
 
 // Please replace with your id and signalingKey!
 const signalingUrl = 'wss://ayame-labo.shiguredo.app/signaling';
-const sendSignalingKey = location.host.includes('binzume.') || globalThis.RDP != undefined;
-const signalingKey = sendSignalingKey ? 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F' : null;
-const roomIdPrefix = sendSignalingKey ? 'binzume@rdp-room-' : 'binzume-rdp-room-';
-const roomIdPinPrefix = sendSignalingKey ? 'binzume@rdp-pin-' : 'binzume-rdp-pin-';
+const signalingKey = 'VV69g7Ngx-vNwNknLhxJPHs9FpRWWNWeUzJ9FUyylkD_yc_F';
+const roomIdPrefix = 'binzume@rdp-room-';
+const roomIdPinPrefix = 'binzume@rdp-pin-';
 
 class Settings {
     static settingsKey = 'webrtc-rdp-settings';
