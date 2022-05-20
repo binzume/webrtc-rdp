@@ -4,30 +4,30 @@
   <link rel="stylesheet" type="text/css" href="style.css" />
   <title>WebRTC Remote Desktop</title>
   <script src="node_modules/@open-ayame/ayame-web-sdk/dist/ayame.min.js"></script>
-  <script src="rtcfilesystem-server.js?20220516"></script>
-  <script src="webrtc-rdp.js?20220516"></script>
+  <script src="rtcfilesystem-server.js?20220520"></script>
+  <script src="webrtc-rdp.js?20220520"></script>
 </head>
 
 <body>
   <h1 class="noplayer browser">WebRTC Remote Desktop</h1>
 
-  <div id="content" class='noplayer'>
-  <div id="pairing" style="display:none;text-align: center;">
-    <h2>Connect to peer device</h2>
-    <button id="generatePin">Generate PIN</button> or <button id="inputPin">Input PIN</button>
+  <div id="content" class="noplayer">
+  <div id="pairing" class="block" style="display:none;">
+    <h2>Add new device</h2>
+    <button id="generatePin">Generate PIN</button> / <button id="inputPin">Input PIN</button>
     <div id="pinDisplayBox" style="display:none;">
       <div class="pin">
         PIN: <span id="pin" class="selectable"></span>
       </div>
       Waiting.... Visit this page on peer device, and input the PIN.
     </div>
-    <div id="pinInputBox">
+    <form id="pinInputBox">
       <div class="pin">
         PIN:<input type="number" inputmode="numeric" maxlength="8" id="pinInput"
-          style="width:200pt;height:50pt;" /><button id="sendPinButton" style="width:80pt;height:50pt;">OK</button>
+          style="width:200pt;height:50pt;" /><button type='submit' style="width:80pt;height:50pt;">OK</button>
       </div>
       Visit this page on peer device, and generate PIN.
-    </div>
+    </form>
   </div>
 
   <div id="publishOrPlay" style="display:none;text-align: center">
@@ -37,7 +37,7 @@
     </div>
     <div id="devices"></div>
     <ul id="files" class="streamlist"></ul>
-    <div class="browser" style="border: 2px solid #ccc">
+    <div class="browser block">
       Input proxy: <input id="inputProxyUrl" />
       <button id="connectInputButton">Connect</button> <br />
       If you want to cntrol mouse, set <a href="https://github.com/binzume/inputproxy" target="_blank">inputproxy</a>

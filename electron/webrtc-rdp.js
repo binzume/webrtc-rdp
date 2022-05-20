@@ -707,7 +707,8 @@ function initPairing() {
     let pairing = new PairingConnection(signalingUrl, signalingKey);
     document.getElementById('addDeviceButton').addEventListener('click', (ev) => {
         pairing.disconnect();
-        document.getElementById("pairing").style.display = "block";
+        document.getElementById("pairing").style.display =
+            document.getElementById("pairing").style.display == 'none' ? 'block' : 'none';
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
     });
@@ -715,12 +716,13 @@ function initPairing() {
         document.getElementById("pinDisplayBox").style.display = "none";
         document.getElementById("pinInputBox").style.display = "block";
     });
-    document.getElementById('sendPinButton').addEventListener('click', (ev) => {
+    document.getElementById('pinInputBox').addEventListener('submit', (ev) => {
         let pin = /** @type {HTMLInputElement} */(document.getElementById("pinInput")).value.trim();
         if (pairing.validatePin(pin)) {
             document.getElementById("pinInputBox").style.display = "none";
             pairing.sendPin(pin);
         }
+        ev.preventDefault();
     });
     document.querySelector('#generatePin').addEventListener('click', async (ev) => {
         document.getElementById("pinDisplayBox").style.display = "block";
@@ -870,7 +872,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             if (exstings.includes(d.roomId)) {
                 continue;
             }
-            let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, 50) + '...';
+            let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ');
             let cm = new ConnectionManager(d, fileServer);
             let listEl = mkEl('ul', [], { className: 'streamlist' });
             let removeButtonEl = mkEl('button', 'x', {

@@ -54,11 +54,14 @@ body.player #player {
     max-width: 400pt;
 }
 
-#pairing {
-    margin: 12pt auto;
-    padding: 8pt 0;
+.block {
     border: 2px solid #ccc;
     border-radius: 4pt;
+    margin: 12pt auto;
+}
+
+#pairing {
+    padding: 8pt 0;
     text-align: center;
 }
 
@@ -117,7 +120,7 @@ body.player #player {
 }
 
 #devices>div {
-    border: solid 2px #ccc;
+    border: solid 1px #ccc;
     min-height: 50pt;
     border-radius: 6pt;
     padding-bottom: 0 5pt;
@@ -129,9 +132,17 @@ body.player #player {
     border-top-left-radius: 4pt;
     border-top-right-radius: 4pt;
     width: 100%;
-    background-color: #abf;
+    background-color: #e0e8f8;
     font-weight: bold;
     margin-bottom: 4pt;
+}
+
+#devices>div>span>span {
+    display: inline-block;
+    width: calc(100% - 30pt);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #devices>div>span>button {
