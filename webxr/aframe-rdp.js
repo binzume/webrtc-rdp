@@ -244,18 +244,20 @@ AFRAME.registerComponent('webrtc-rdp', {
 		maxWidth: { default: 8 },
 		maxHeight: { default: 6 },
 	},
+	/** @type {PlayerConnection} */
+	playerConn: null,
+	/** @type {HTMLVideoElement} */
+	videoEl: null,
+	roomIdSuffix: '.1',
+	width: 0,
+	height: 0,
 	init() {
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");
-		this.videoEl = null;
-		this.width = 0;
-		this.height = 0;
-		this.roomIdSuffix = "1";
-		this.playerConn = null;
 
 		let dragging = false;
 		let dragTimer = null;
-		screenEl.setAttribute('tabindex', 0);
+		screenEl.setAttribute('tabindex', 0); // allow focus
 
 		// EXPERIMENT
 		let dragMode = false;
@@ -461,11 +463,13 @@ AFRAME.registerComponent('webrtc-rdp', {
 		}
 		if (oldData.roomId != this.data.roomId && this.data.roomId) {
 			this.connect();
+		} else if (oldData.settingIndex != this.data.settingIndex) {
+			this.disconnect();
 		}
 	},
 	connect() {
 		this.disconnect();
-		this._updateScreen(this.data.loadingSrc, false);
+		this._updateScreen(this.data.loadingSrc);
 		let data = this.data;
 		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default' };
 		if (data.settingIndex >= 0) {
@@ -476,7 +480,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				return;
 			}
 		}
-		let roomId = data.roomId || settings.roomId + "." + this.roomIdSuffix;
+		let roomId = data.roomId || settings.roomId + this.roomIdSuffix;
 
 		if (this.el.components.xywindow) {
 			this.el.setAttribute("xywindow", "title", this._settingName(settings));
@@ -490,7 +494,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		}));
 		videoEl.addEventListener('loadeddata', ev => {
 			if (videoEl != this.videoEl) { return; }
-			this._updateScreen("#" + videoEl.id, false);
+			this._updateScreen("#" + videoEl.id);
 			this.resize(videoEl.videoWidth, videoEl.videoHeight);
 			this.el.dispatchEvent(new CustomEvent('webrtc-rdp-connected', { detail: { roomId: roomId, event: ev } }));
 		});
@@ -505,15 +509,20 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this.videoEl = videoEl;
 
 		// connect
-		this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
+		let player = this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
 		if (globalThis.rtcFileSystemManager) {
 			// defined in ../electron/rtcfilesystem-client.js
-			this.playerConn.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + data.settingIndex);
+			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + data.settingIndex);
 		}
+		player.onstatechange = (state) => {
+			if (state == 'disconnected') {
+				this._updateScreen(null);
+			}
+		};
 		this.playerConn.connect();
 	},
 	disconnect() {
-		this.playerConn?.disconnect();
+		this.playerConn?.dispose();
 		this.playerConn = null;
 	},
 	resize(width, height) {
@@ -540,9 +549,9 @@ AFRAME.registerComponent('webrtc-rdp', {
 	_settingName(d, limit = 32) {
 		return d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ').substring(0, limit) + '...';
 	},
-	_updateScreen(src, transparent) {
+	_updateScreen(src) {
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
-		this.screenEl.setAttribute('material', { shader: "flat", src: src, transparent: transparent });
+		this.screenEl.setAttribute('material', { shader: "flat", src: src });
 	},
 	_byName(name) {
 		return /** @type {import("aframe").Entity} */ (this.el.querySelector("[name=" + name + "]"));
