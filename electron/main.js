@@ -121,6 +121,26 @@ class RDPApp {
       }
     });
 
+    const isMac = process.platform === 'darwin'
+    let menuTemplate = [
+      ...(isMac ? [
+        { role: 'appMenu' }
+      ] : [
+        { role: 'fileMenu' }
+      ]),
+      {
+        label: 'Debug',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+        ]
+      },
+    ];
+    // @ts-ignore
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    Menu.setApplicationMenu(menu);
+
     window.addListener('close', (ev) => {
       if (this.mainWindow) {
         window.hide();
@@ -155,7 +175,6 @@ class RDPApp {
     return tray;
   }
 }
-
 
 let rdp;
 app.whenReady().then(() => {
