@@ -338,14 +338,12 @@ class PlayerConnection extends BaseConnection {
 class ConnectionManager {
     /**
      * @param {DeviceSettings} settings 
-     * @param {FileServer} fileServer 
      */
-    constructor(settings, fileServer = null) {
+    constructor(settings) {
         this.settings = settings;
         this.onadded = null;
         /**  @type {ConnectionInfo[]} */
         this._connections = [];
-        this.fileServer = fileServer;
     }
 
     /**
@@ -363,7 +361,6 @@ class ConnectionManager {
         let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + "." + id, mediaStream, messageHandler);
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
-        if (this.fileServer) { conn.dataChannels['fileServer'] = this.fileServer.getRtcChannelSpec(); }
 
         let info = { conn: conn, id: id, name: name, permanent: permanent };
         this._connections.push(info);
@@ -751,45 +748,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         return el;
     };
 
-    class FileServerUI {
-        /**
-         * @param {FileServer} server 
-         */
-        constructor(server) {
-            this.server = server;
-            this.listEl = document.getElementById('files');
-            this.initDropArea(document.body);
-        }
-
-        /** @param {HTMLElement} el */
-        initDropArea(el) {
-            el.addEventListener('dragover', (ev) => ev.preventDefault());
-            el.addEventListener('drop', (ev) => {
-                ev.preventDefault();
-                for (const item of ev.dataTransfer.items) {
-                    if (item.kind != 'file') {
-                        continue;
-                    }
-                    (async () => {
-                        // @ts-ignore
-                        const handle = await item.getAsFileSystemHandle();
-                        if (await handle.queryPermission({ mode: "read" }) == 'granted') {
-                            this.addEntry(handle);
-                        }
-                    })();
-                }
-            });
-        }
-        addEntry(handle) {
-            this.server.fs.handle.addEntry(handle);
-            let el = mkEl('li', [
-                'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
-                mkEl('button', 'x', { onclick: (_) => { this.server.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); } })
-            ]);
-            this.listEl.append(el);
-        }
-    }
-
     let isElectronApp = globalThis.RDP != null;
     if (isElectronApp) {
         document.body.classList.add('standalone');
@@ -808,7 +766,32 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     if (typeof FileServer != 'undefined') {
         console.log('Starting fileServer');
         fileServer = new FileServer(new FileSystemHandleArray()); // !! Global variable
-        new FileServerUI(fileServer);
+        let targetEl = document.body;
+        let listEl = document.getElementById('files');
+        let addEntry = (handle) => {
+            fileServer.fs.handle.addEntry(handle);
+            let el = mkEl('li', [
+                'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
+                mkEl('button', 'x', { onclick: (_) => { fileServer.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); }, title: 'Stop sharing' })
+            ]);
+            listEl.append(el);
+        };
+        targetEl.addEventListener('dragover', (ev) => ev.preventDefault());
+        targetEl.addEventListener('drop', (ev) => {
+            ev.preventDefault();
+            for (const item of ev.dataTransfer.items) {
+                if (item.kind != 'file') {
+                    continue;
+                }
+                (async () => {
+                    // @ts-ignore
+                    const handle = await item.getAsFileSystemHandle();
+                    if (await handle.queryPermission({ mode: "read" }) == 'granted') {
+                        addEntry(handle);
+                    }
+                })();
+            }
+        });
     }
 
     if (isElectronApp) {
@@ -872,12 +855,13 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 continue;
             }
             let name = d.name || d.userAgent.replace(/^Mozilla\/[\d\.]+\s*/, '').replace(/[\s\(\)]+/g, ' ');
-            let cm = new ConnectionManager(d, fileServer);
+            let cm = new ConnectionManager(d);
             let listEl = mkEl('ul', [], { className: 'streamlist' });
             let removeButtonEl = mkEl('button', 'x', {
                 onclick: (ev) => confirm(`Remove ${name} ?`) && Settings.removePeerDevice(d)
             });
             cm.onadded = (c) => {
+                if (fileServer) { c.conn.dataChannels['fileServer'] = fileServer.getRtcChannelSpec(); }
                 let el = mkEl('li');
                 listEl.appendChild(el);
                 c.conn.onstatechange = () => {
