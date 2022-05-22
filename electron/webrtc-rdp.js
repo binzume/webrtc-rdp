@@ -674,9 +674,9 @@ class ElectronStreamProvider {
             await RDP.sendMouse({ target: s, action: msg.action, button: msg.button, x: msg.x, y: msg.y });
         } else if (msg.type == 'key') {
             let modifiers = msg.modifiers || [];
-            msg.ctrl && modifiers.push('control');
-            msg.alt && modifiers.push('alt');
-            msg.shift && modifiers.push('shift');
+            msg.ctrl && modifiers.push('Control');
+            msg.alt && modifiers.push('Clt');
+            msg.shift && modifiers.push('Shift');
             await RDP.sendKey({ target: s, action: msg.action, key: msg.key, modifiers: modifiers });
         } else if (msg.type == 'rpc' && msg.name == 'getStreams') {
             let streams = await this.getStreams();
