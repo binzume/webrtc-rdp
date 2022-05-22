@@ -257,7 +257,9 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		let dragging = false;
 		let dragTimer = null;
+		let mouseMoveTimer = null;
 		screenEl.setAttribute('tabindex', 0); // allow focus
+		screenEl.focus();
 
 		// EXPERIMENT
 		let dragMode = false;
@@ -274,7 +276,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 				return;
 			}
 			let sw = screenEl.getAttribute('width') || 1, sh = screenEl.getAttribute('height') || 1;
-			let sc = screenEl.object3D.getWorldScale(new THREE.Vector3());
 			let rect = draggingStream.rect;
 			rectOffset.set((rect.x + rect.width / 2 - x) * sw, -(rect.y + rect.height / 2 - y) * sh, 0);
 
@@ -295,7 +296,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				rectObj.position.copy(rectObj.parent.worldToLocal(v).add(rectOffset));
 			};
 			clearTimeout(dragTimer);
-			dragTimer = setInterval(update, 100);
+			dragTimer = setInterval(update, 50);
 			update();
 		};
 		let stopDrag = async () => {
@@ -353,43 +354,42 @@ AFRAME.registerComponent('webrtc-rdp', {
 		window.addEventListener('keydown', this._onkeydown);
 		window.addEventListener('keyup', this._onkeyup);
 
-
+		let mousePos = new THREE.Vector2();
 		screenEl.addEventListener('mousedown', (ev) => {
+			screenEl.focus();
+			let intersection = ev.detail.intersection;
 			if (dragMode) {
-				startDrag(ev.detail.cursorEl.components.raycaster.raycaster, ev.detail.intersection);
+				startDrag(ev.detail.cursorEl.components.raycaster.raycaster, intersection);
 				return;
 			}
-			dragTimer = setTimeout(() => {
-				dragging = true;
-				ev.detail.intersection && this.playerConn?.sendMouseEvent("mousedown", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
-				let raycaster = ev.detail.cursorEl.components.raycaster;
-				if (raycaster && screenEl.is('cursor-hovered')) {
-					dragTimer = setInterval(() => {
-						let intersection = raycaster.intersections.find(i => i.object.el === screenEl);
-						intersection && this.playerConn?.sendMouseEvent("mousemove", intersection.uv.x, 1 - intersection.uv.y, 0);
-					}, 100);
-				}
-			}, 200);
+			if (intersection) {
+				clearTimeout(dragTimer);
+				mousePos.copy(intersection.uv);
+				dragTimer = setTimeout(() => {
+					dragging = true;
+					this.playerConn?.sendMouseEvent("mousedown", mousePos.x, 1 - mousePos.y, 0);
+				}, 200);
+			}
 		});
 		this.el.sceneEl.addEventListener('mouseup', (ev) => {
 			clearTimeout(dragTimer);
 			if (dragging) {
-				ev.detail.intersection && this.playerConn?.sendMouseEvent("mouseup", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
+				let intersection = ev.detail.cursorEl?.components.raycaster?.getIntersection(screenEl);
+				intersection && mousePos.copy(intersection.uv);
+				this.playerConn?.sendMouseEvent("mouseup", mousePos.x, 1 - mousePos.y, 0);
 				let cancelClick = ev => ev.stopPropagation();
 				window.addEventListener('click', cancelClick, true);
 				setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
+				dragging = false;
 			}
-			dragging = false;
 			stopDrag();
 		});
 		screenEl.addEventListener('click', (ev) => {
-			ev.detail.intersection && this.playerConn?.sendMouseEvent("click", ev.detail.intersection.uv.x, 1 - ev.detail.intersection.uv.y, 0);
-			screenEl.focus();
+			let intersection = ev.detail.intersection;
+			intersection && this.playerConn?.sendMouseEvent("click", intersection.uv.x, 1 - intersection.uv.y, 0);
 		});
 		screenEl.addEventListener('materialtextureloaded', (ev) => {
-			/**
-			 * @type {THREE.Texture}
-			 */
+			/** @type {THREE.Texture} */
 			let map = ev.detail.texture;
 			map.anisotropy = Math.min(16, this.el.sceneEl.renderer.capabilities.getMaxAnisotropy());
 			map.magFilter = THREE.LinearFilter;
@@ -412,6 +412,18 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 			ev.preventDefault();
 		});
+		screenEl.addEventListener('mouseenter', (ev) => {
+			let raycaster = ev.detail.cursorEl.components.raycaster;
+			clearTimeout(mouseMoveTimer);
+			mouseMoveTimer = setInterval(() => {
+				let intersection = raycaster.getIntersection(screenEl);
+				if (intersection && mousePos.distanceToSquared(intersection.uv) > 0 && !rectObj) {
+					mousePos.copy(intersection.uv);
+					this.playerConn?.sendMouseEvent("mousemove", mousePos.x, 1 - mousePos.y, 0);
+				}
+			}, 100);
+		});
+		screenEl.addEventListener('mouseleave', (ev) => clearTimeout(mouseMoveTimer));
 		screenEl.focus();
 
 		this._byName("connectButton").addEventListener('click', ev => {
