@@ -367,7 +367,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				mousePos.copy(intersection.uv);
 				dragTimer = setTimeout(() => {
 					dragging = true;
-					this.playerConn?.sendMouseEvent("mousedown", mousePos.x, 1 - mousePos.y, 0);
+					this.playerConn?.sendMouseEvent("down", mousePos.x, 1 - mousePos.y, 0);
 				}, 200);
 			}
 		});
@@ -376,7 +376,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 			if (dragging) {
 				let intersection = ev.detail.cursorEl?.components.raycaster?.getIntersection(screenEl);
 				intersection && mousePos.copy(intersection.uv);
-				this.playerConn?.sendMouseEvent("mouseup", mousePos.x, 1 - mousePos.y, 0);
+				this.playerConn?.sendMouseEvent("up", mousePos.x, 1 - mousePos.y, 0);
 				let cancelClick = ev => ev.stopPropagation();
 				window.addEventListener('click', cancelClick, true);
 				setTimeout(() => window.removeEventListener('click', cancelClick, true), 0);
@@ -419,7 +419,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				let intersection = raycaster.getIntersection(screenEl);
 				if (intersection && mousePos.distanceToSquared(intersection.uv) > 0 && !rectObj) {
 					mousePos.copy(intersection.uv);
-					this.playerConn?.sendMouseEvent("mousemove", mousePos.x, 1 - mousePos.y, 0);
+					this.playerConn?.sendMouseEvent("move", mousePos.x, 1 - mousePos.y, 0);
 				}
 			}, 100);
 		});
