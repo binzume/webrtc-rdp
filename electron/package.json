@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@open-ayame/ayame-web-sdk": "^2022.1.0",
-    "karakurijs": "^0.0.1"
+    "karakurijs": "^0.0.3"
   },
   "build": {
     "appId": "net.binzume.webrtc-rdp",
