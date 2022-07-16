@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "esnext",
+        "strictNullChecks": false,
+        "moduleResolution": "node",
+        "noEmit": true,
+    },
+    "files": [
+        "global.d.ts",
+        "webrtc-rdp.js",
+        "rtcfilesystem-client.js",
+        "rtcfilesystem-server.js"
+    ]
+}

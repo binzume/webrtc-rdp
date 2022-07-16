@@ -1,3 +1,4 @@
+// @ts-check
 
 /** @typedef {{name: string, type: string, size: number, updatedTime: number, [k:string]: any}} RTCFileSystemFileStat */
 
@@ -41,10 +42,11 @@ class RTCFileSystemClient {
             if (pos < end) {
                 let sz = Math.min(end - pos, blockSize);
                 queue.push(this.read(path, pos, sz));
-                pos += sz;
+                pos += sz;``
             }
         };
         return new ReadableStream({
+            // @ts-ignore
             type: 'bytes',
             start: (_controller) => {
                 for (let i = 0; i < 16; i++) {

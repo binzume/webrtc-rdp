@@ -9,6 +9,7 @@ const roomIdPinPrefix = 'binzume@rdp-pin-';
 
 class Settings {
     static settingsKey = 'webrtc-rdp-settings';
+    /** @type {((devices:DeviceSettings[])=>any)|null} */
     static onsettingsupdate = null;
 
     /**
@@ -70,14 +71,14 @@ class Settings {
 class BaseConnection {
     /**
      * @param {string} signalingUrl 
-     * @param {string|null} signalingKey 
+     * @param {string|undefined} signalingKey 
      * @param {string} roomId 
      */
     constructor(signalingUrl, signalingKey, roomId) {
         this.signalingUrl = signalingUrl;
         this.roomId = roomId;
         this.conn = null;
-        /** @type {MediaStream} */
+        /** @type {MediaStream|null} */
         this.mediaStream = null;
         this.stopTracksOnDisposed = true;
         /** @type {Record<string, DataChannelInfo>} */
@@ -125,6 +126,9 @@ class BaseConnection {
         });
         return conn;
     }
+    /**
+     * @param {string|null} reason 
+     */
     disconnect(reason = null) {
         console.log('disconnect', reason);
         clearTimeout(this._connectTimer);
@@ -160,7 +164,7 @@ class BaseConnection {
         }
     }
     /**
-     * @param {RTCDataChannel} ch
+     * @param {RTCDataChannel|null} ch
      */
     handleDataChannel(ch) {
         if (!ch) return;
@@ -179,8 +183,9 @@ class BaseConnection {
 class PairingConnection extends BaseConnection {
     /**
      * @param {string} signalingUrl 
+     * @param {*} signalingKey 
      */
-    constructor(signalingUrl, signalingKey = null) {
+    constructor(signalingUrl, signalingKey = undefined) {
         super(signalingUrl, signalingKey, '');
         this.pinLength = 6;
         this.userAgent = navigator.userAgent;
@@ -261,7 +266,7 @@ class PublisherConnection extends BaseConnection {
      * @param {string} signalingUrl 
      * @param {string} roomId 
      * @param {MediaStream} mediaStream 
-     * @param {DataChannelInfo} messageHandler 
+     * @param {DataChannelInfo|null} messageHandler 
      */
     constructor(signalingUrl, signalingKey, roomId, mediaStream, messageHandler = null) {
         super(signalingUrl, signalingKey, roomId);
@@ -348,8 +353,8 @@ class ConnectionManager {
 
     /**
      * @param {MediaStream} mediaStream 
-     * @param {DataChannelInfo} messageHandler 
-     * @param {string} name 
+     * @param {string|null} name 
+     * @param {DataChannelInfo|null} messageHandler 
      * @param {boolean} connect 
      * @param {boolean} permanent 
      * @returns {ConnectionInfo}
@@ -522,7 +527,7 @@ class StreamRedirector {
 
 class BrowserStreamProvider {
     constructor() {
-        /** @type {(target: any, ev: Record<string,any>) => void} */
+        /** @type {((target: any, ev: Record<string,any>) => void)|null} */
         this.sendInputEvent = null;
         /** @type {Record<string, StreamProvider>} */
         this.pseudoStreams = {};
@@ -930,7 +935,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
 
     // Player
-    /** @type {PlayerConnection} */
+    /** @type {PlayerConnection|null} */
     let player = null;
     /** @type {HTMLVideoElement} */
     let videoEl = document.querySelector('#screen');
@@ -1002,9 +1007,9 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             ev.preventDefault();
         }
     });
-    document.querySelector('#playButton').addEventListener('click', (ev) => playStream());
-    document.querySelector('#fullscreenButton').addEventListener('click', (ev) => videoEl.requestFullscreen());
-    document.querySelector('#closePlayerButton').addEventListener('click', (ev) => {
+    document.getElementById('playButton')?.addEventListener('click', (ev) => playStream());
+    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => videoEl.requestFullscreen());
+    document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
         player?.disconnect();
         document.body.classList.remove('player');
     });
