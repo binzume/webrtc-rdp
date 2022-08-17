@@ -8,7 +8,7 @@ WebRTCとWebXRを使ったブラウザ上で動作するリモートデスクト
 VRモードは Oculus Quest 2 の Oculus Browser で動作確認しています．
 
 Demo URL:
-- https://binzume.github.io/webrtc-rdp/
+- https://binzume.github.io/webrtc-rdp/ (Web)
 - https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp (WebXR)
 
 ## Usage
@@ -21,14 +21,20 @@ Demo URL:
 - [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードでPCのデスクトップに接続できます (Oculus Quest用)
 - 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
 
+
+| Features  | Web         | WebXR | Electron App |
+|-----------|-------------|-------|--------------|
+| Screen    | send/recv   | recv  | send/recv    |
+| Mouse/Kbd | send/(recv) | send  | send/recv    |
+| File      | send        | recv  | send         |
+
 ### Mouse/Keyboard
 
-マウスやキーボードを使いたい場合は，下記のElectron App版を使ってください．
+マウスやキーボードの操作をしたい場合は，下記のElectron App版を使ってください．
 
-ブラウザ上からはマウスやキーボードの制御はできないので，ワイヤレスキーボード・マウス等の手段を用意するか，
 どうしてもブラウザ経由でマウスを動かしたい場合は，ホスト側のPCで https://github.com/binzume/inputproxy を起動し表示されたURLをフォームに入力することで使えるようになります．
 
-### ファイル共有
+### Share files
 
 ホスト側の画面にファイルやディレクトリをドラッグ＆ドロップすると共有されます．
 
