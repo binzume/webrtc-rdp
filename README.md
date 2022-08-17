@@ -45,7 +45,7 @@ Chromeを起動していなくても単体で動くアプリケーションで�
 
 ```
 git clone https://github.com/binzume/webrtc-rdp.git
-cd webrtc-rdp/electron
+cd webrtc-rdp/app
 npm install
 npx electron-rebuild
 npm start

@@ -11,7 +11,7 @@ class RTCFileSystemClient {
         this.ondisconnected = null;
         this._disconnectTimer = null;
         this._seq = 0;
-        /** @type {Record<string, {resolve:any, reject:any}} */
+        /** @type {Record<string, {resolve:any, reject:any}>} */
         this._req = {};
     }
     /** @returns {Promise<RTCFileSystemFileStat>} */

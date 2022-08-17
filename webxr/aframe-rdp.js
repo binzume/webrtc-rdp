@@ -258,7 +258,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let dragging = false;
 		let dragTimer = null;
 		let mouseMoveTimer = null;
-		screenEl.setAttribute('tabindex', 0); // allow focus
 		screenEl.focus();
 
 		// EXPERIMENT

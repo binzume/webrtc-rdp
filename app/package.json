@@ -19,13 +19,13 @@
   "author": "binzume",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^17.2.0",
+    "electron": "^19.0.0",
     "electron-builder": "^22.14.13",
     "electron-rebuild": "^3.2.7"
   },
   "dependencies": {
     "@open-ayame/ayame-web-sdk": "^2022.1.0",
-    "karakurijs": "^0.0.3"
+    "karakurijs": "^0.0.4"
   },
   "build": {
     "appId": "net.binzume.webrtc-rdp",
