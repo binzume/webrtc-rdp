@@ -290,7 +290,11 @@ class PlayerConnection extends BaseConnection {
         this.options.audio.direction = 'recvonly';
         this.videoEl = videoEl;
         this._rpcResultHandler = {};
+        this.authToken = null;
         this.dataChannels['controlEvent'] = {
+            onopen: (ch, ev) => {
+                this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+            },
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'redirect' && msg.roomId) {
@@ -347,6 +351,7 @@ class ConnectionManager {
     constructor(settings) {
         this.settings = settings;
         this.onadded = null;
+        this.authStatus = null;
         /**  @type {ConnectionInfo[]} */
         this._connections = [];
     }
@@ -670,6 +675,7 @@ class ElectronStreamProvider {
      * @param {object} msg 
      */
     async _handleMessage(cm, s, ch, msg) {
+        // TODO: check cm.authStatus
         if (msg.type == 'mouse') {
             let now = Date.now();
             if (now - this._lastMouseMoveTime < 10 && msg.action == 'move') {
@@ -697,6 +703,9 @@ class ElectronStreamProvider {
                 ch.send(JSON.stringify({ type: 'redirect', reqId: msg.reqId, roomId: c?.conn.roomId }));
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
+        } else if (msg.type == 'auth') {
+            cm.authStatus = msg.token == cm.settings.token;
+            console.log('Auth result', cm.authStatus);
         } else {
             console.log("drop:", msg);
         }
@@ -842,7 +851,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.querySelector('#connectInputButton')?.addEventListener('click', (ev) => connectInputProxy());
     }
 
-    /** @type {Record<string, DeviceState} */
+    /** @type {Record<string, DeviceState>} */
     let devices = {};
     let updateDeviceList = (/** @type {DeviceSettings[]} */ deviceSettings) => {
         let parentEl = document.getElementById('devices');

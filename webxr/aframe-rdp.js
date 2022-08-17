@@ -121,6 +121,9 @@ class BaseConnection {
 		});
 		return conn;
 	}
+	/**
+	 * @param {string|null} reason 
+	 */
 	disconnect(reason = null) {
 		console.log('disconnect', reason);
 		clearTimeout(this._connectTimer);
@@ -184,7 +187,11 @@ class PlayerConnection extends BaseConnection {
 		this.options.audio.direction = 'recvonly';
 		this.videoEl = videoEl;
 		this._rpcResultHandler = {};
+		this.authToken = null;
 		this.dataChannels['controlEvent'] = {
+			onopen: (ch, ev) => {
+				this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+			},
 			onmessage: (ch, ev) => {
 				let msg = JSON.parse(ev.data);
 				if (msg.type == 'redirect' && msg.roomId) {
@@ -482,7 +489,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this.disconnect();
 		this._updateScreen(this.data.loadingSrc);
 		let data = this.data;
-		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default' };
+		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default', token: null };
 		if (data.settingIndex >= 0) {
 			settings = Settings.getPeerDevices()[data.settingIndex];
 			if (!settings) {
@@ -522,7 +529,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 		// connect
 		let player = this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
 		if (globalThis.rtcFileSystemManager) {
-			// defined in ../electron/rtcfilesystem-client.js
+			player.authToken = settings.token;
+			// defined in ../app/rtcfilesystem-client.js
 			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + data.settingIndex);
 		}
 		player.onstatechange = (state) => {
