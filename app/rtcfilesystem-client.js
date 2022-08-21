@@ -42,7 +42,7 @@ class RTCFileSystemClient {
             if (pos < end) {
                 let sz = Math.min(end - pos, blockSize);
                 queue.push(this.read(path, pos, sz));
-                pos += sz;``
+                pos += sz;
             }
         };
         return new ReadableStream({

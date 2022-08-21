@@ -84,7 +84,7 @@ class FileSystemWrapper {
         }
         return Promise.all(fileTasks);
     }
-    async read(path, offset, len) {
+    async read(path, offset = 0, len) {
         if (path.endsWith('#thumbnail.jpeg')) {
             let file = await this.resolveFile(path.substring(0, path.lastIndexOf('#')));
             let blob = await this.createThumbnail(file);
@@ -93,7 +93,7 @@ class FileSystemWrapper {
         let file = await this.resolveFile(path);
         return file.slice(offset, offset + len);
     }
-    async write(path, offset, data) {
+    async write(path, offset = 0, data) {
         if (!this.writable) { throw 'readonly'; }
         let handle = await this.resolvePath(path, 'file');
         let writer = await handle.createWritable({ keepExistingData: true });
