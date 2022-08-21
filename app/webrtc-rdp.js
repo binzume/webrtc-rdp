@@ -203,16 +203,31 @@ class PairingConnection extends BaseConnection {
         this.connectTimeoutMs = this.pinTimeoutMs;
         let pin = this._generatePin();
         let publishRoomId = this.isolatedRoom ? roomIdPrefix + this._generateSecret(16) : null;
+        let token = this._generateSecret(16);
 
         this.dataChannels['secretExchange'] = {
             onopen: (ch, ev) => {
-                ch.send(JSON.stringify({ type: "hello", roomId: publishRoomId, signalingKey: publishRoomId ? signalingKey : null, userAgent: this.userAgent, version: this.version }));
+                ch.send(JSON.stringify({
+                    type: "hello",
+                    roomId: publishRoomId,
+                    token: token,
+                    signalingKey: publishRoomId ? signalingKey : null,
+                    userAgent: this.userAgent,
+                    version: this.version
+                }));
             },
             onmessage: (_ch, ev) => {
                 console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    Settings.addPeerDevice({ roomId: msg.roomId, publishRoomId: publishRoomId, signalingKey: msg.signalingKey, token: msg.token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({
+                        roomId: msg.roomId,
+                        publishRoomId: publishRoomId,
+                        localToken: token,
+                        token: msg.token,
+                        signalingKey: msg.signalingKey,
+                        userAgent: msg.userAgent
+                    });
                     this.disconnect();
                 }
             },
@@ -242,7 +257,14 @@ class PairingConnection extends BaseConnection {
                     let roomId = msg.roomId || publishRoomId
                     let token = this._generateSecret(16);
                     ch.send(JSON.stringify({ type: "credential", roomId: publishRoomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
-                    Settings.addPeerDevice({ roomId: roomId, publishRoomId: msg.roomId ? publishRoomId : null, signalingKey: msg.signalingKey || signalingKey, token: token, userAgent: msg.userAgent });
+                    Settings.addPeerDevice({
+                        roomId: roomId,
+                        publishRoomId: msg.roomId ? publishRoomId : null,
+                        token: msg.token,
+                        localToken: token,
+                        signalingKey: msg.signalingKey || signalingKey,
+                        userAgent: msg.userAgent
+                    });
                     this.disconnect();
                 }
             },
@@ -351,7 +373,7 @@ class ConnectionManager {
     constructor(settings) {
         this.settings = settings;
         this.onadded = null;
-        this.authStatus = null;
+        this.authStatus = settings.localToken == null;
         /**  @type {ConnectionInfo[]} */
         this._connections = [];
     }
@@ -615,9 +637,9 @@ class BrowserStreamProvider {
 }
 
 class ElectronStreamProvider {
-    constructor() {
+    constructor(types = ['screen', 'window']) {
         this._lastMouseMoveTime = 0;
-        this.streamTypes = ['screen', 'window'];
+        this.streamTypes = types;
         /** @type {Record<string, StreamProvider>} */
         this.pseudoStreams = {};
     }
@@ -704,7 +726,8 @@ class ElectronStreamProvider {
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
         } else if (msg.type == 'auth') {
-            cm.authStatus = msg.token == cm.settings.token;
+            cm.authStatus ||= msg.token == cm.settings.localToken;
+            ch.send(JSON.stringify({ type: 'authResult', result: cm.authStatus }));
             console.log('Auth result', cm.authStatus);
         } else {
             console.log("drop:", msg);
@@ -810,11 +833,11 @@ window.addEventListener('DOMContentLoaded', (ev) => {
 
     if (isElectronApp) {
         initStreams = async (d) => {
-            let streamProvider = d.streamProvider = new ElectronStreamProvider();
+            let streamProvider = d.streamProvider = new ElectronStreamProvider(['screen']);
             streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(streamProvider);
             // streamProvider.pseudoStreams['_redirector'] = new StreamRedirector(streamProvider, { id: '_selector', name: 'selector' });
             // await streamProvider.startStream(d.cm, { id: '_redirector', name: 'redirector' }, true);
-            await streamProvider.startStream(d.cm, { id: '_selector', name: 'selector' }, true);
+            await streamProvider.startStream(d.cm, { id: '_selector', name: 'stream selector' }, true);
         };
     } else {
         /** @type {WebSocket} */
@@ -828,7 +851,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 }
             };
             d.streamProvider.pseudoStreams['_selector'] = new StreamSelectScreen(d.streamProvider);
-            await d.streamProvider.startStream(d.cm, { id: '_selector', name: 'selector' }, true);
+            await d.streamProvider.startStream(d.cm, { id: '_selector', name: 'stream selector' }, true);
         };
         addStream = async (d, listEl, camera) => {
             if (!d.streamProvider) { initStreamProvider(d); }

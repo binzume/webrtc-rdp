@@ -40,6 +40,7 @@ declare interface DeviceSettings {
     name?: string
     roomId: string
     publishRoomId?: string | null
+    localToken?: string,
     signalingKey: string | null
     userAgent: string
     token: string
