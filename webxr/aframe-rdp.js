@@ -272,7 +272,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 		settingIndex: { default: -1 },
 		roomId: { default: "" },
 		settingUrl: { default: "/webrtc-rdp/" },
-		loadingSrc: { default: "#rdp-loading" },
 		maxWidth: { default: 8 },
 		maxHeight: { default: 6 },
 	},
@@ -512,7 +511,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 	},
 	connect() {
 		this.disconnect();
-		this._updateScreen(this.data.loadingSrc);
 		let data = this.data;
 		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default', token: null };
 		if (data.settingIndex >= 0) {
@@ -523,6 +521,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 				return;
 			}
 		}
+		this._updateScreen(null);
+		this._byName('statusMessage').setAttribute('value', 'Connecting...');
 		let roomId = data.roomId || settings.roomId + this.roomIdSuffix;
 
 		if (this.el.components.xywindow) {
@@ -538,6 +538,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		videoEl.addEventListener('loadeddata', ev => {
 			if (videoEl != this.videoEl) { return; }
 			this._updateScreen("#" + videoEl.id);
+			this._byName('statusMessage').setAttribute('value', '');
 			this.resize(videoEl.videoWidth, videoEl.videoHeight);
 			this.el.dispatchEvent(new CustomEvent('webrtc-rdp-connected', { detail: { roomId: roomId, event: ev } }));
 		});
@@ -546,9 +547,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 		});
 
 		// replace
-		var parent = (this.videoEl || document.querySelector(data.loadingSrc)).parentNode;
 		if (this.videoEl) this.videoEl.parentNode.removeChild(this.videoEl);
-		parent.appendChild(videoEl);
+		this.el.sceneEl.querySelector('a-assets').append(videoEl);
 		this.videoEl = videoEl;
 
 		// connect
@@ -563,7 +563,17 @@ AFRAME.registerComponent('webrtc-rdp', {
 				this._updateScreen(null);
 			}
 		};
-		this.playerConn.connect();
+		player.onauth = (ok) => {
+			if (!ok) {
+				this._byName('statusMessage').setAttribute('value', 'Access denied');
+				this.disconnect();
+				return;
+			}
+			if (player.services && player.services['RDP'] === undefined) {
+				this._byName('statusMessage').setAttribute('value', 'No desktop');
+			}
+		};
+		player.connect();
 	},
 	disconnect() {
 		this.playerConn?.dispose();
@@ -595,7 +605,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 	},
 	_updateScreen(src) {
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
-		this.screenEl.setAttribute('material', { shader: "flat", src: src });
+		this.screenEl.setAttribute('material', { shader: "flat", src: src, color: src ? '#fff' : '#000' });
 	},
 	_byName(name) {
 		return /** @type {import("aframe").Entity} */ (this.el.querySelector("[name=" + name + "]"));
