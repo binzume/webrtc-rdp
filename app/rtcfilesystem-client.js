@@ -130,7 +130,7 @@ class RTCFileSystemClientFolder {
      * @param {RTCFileSystemClient} client 
      * @param {string} name
      * @param {string} path 
-     * @param {Record<string, any} options 
+     * @param {Record<string, any>} options 
      */
     constructor(client, path, name, options = {}) {
         this.name = name;
