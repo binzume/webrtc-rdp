@@ -188,9 +188,31 @@ class PlayerConnection extends BaseConnection {
 		this.videoEl = videoEl;
 		this._rpcResultHandler = {};
 		this.authToken = null;
+		this.services = null;
+		this.onauth = null;
 		this.dataChannels['controlEvent'] = {
-			onopen: (ch, ev) => {
-				this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+			onopen: async (ch, ev) => {
+				if (this.authToken && this.conn._pc && window.crypto?.subtle) {
+					// use HMAC
+					let m = this.conn._pc.currentLocalDescription.sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+					if (!m) {
+						console.log("Failed to get DTLS cert fingerprint");
+						return;
+					}
+					let localFingerprint = m[1];
+					console.log("local fingerprint:", localFingerprint);
+					let enc = new TextEncoder();
+					let key = await crypto.subtle.importKey('raw', enc.encode(this.authToken),
+						{ name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+					let sign = await crypto.subtle.sign('HMAC', key, enc.encode(localFingerprint));
+					this.authToken && ch.send(JSON.stringify({
+						type: "auth",
+						fingerprint: localFingerprint,
+						hmac: btoa(String.fromCharCode(...new Uint8Array(sign)))
+					}));
+				} else {
+					this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+				}
 			},
 			onmessage: (ch, ev) => {
 				let msg = JSON.parse(ev.data);
@@ -198,6 +220,9 @@ class PlayerConnection extends BaseConnection {
 					this.disconnect();
 					this.roomId = msg.roomId;
 					this.connect();
+				} else if (msg.type == 'authResult') {
+					this.services = msg.services;
+					this.onauth?.(msg.result);
 				} else if (msg.type == 'rpcResult') {
 					this._rpcResultHandler[msg.reqId]?.(msg);
 				}

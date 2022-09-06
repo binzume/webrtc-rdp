@@ -314,8 +314,28 @@ class PlayerConnection extends BaseConnection {
         this._rpcResultHandler = {};
         this.authToken = null;
         this.dataChannels['controlEvent'] = {
-            onopen: (ch, ev) => {
-                this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+            onopen: async (ch, ev) => {
+                if (this.authToken && this.conn._pc && window.crypto?.subtle) {
+                    // use HMAC
+                    let m = this.conn._pc.currentLocalDescription.sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+                    if (!m) {
+                        console.log("Failed to get DTLS cert fingerprint");
+                        return;
+                    }
+                    let localFingerprint =  m[1];
+                    console.log("local fingerprint:", localFingerprint);
+                    let enc = new TextEncoder();
+                    let key = await crypto.subtle.importKey('raw', enc.encode(this.authToken),
+                        { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+                    let sign = await crypto.subtle.sign('HMAC', key, enc.encode(localFingerprint));
+                    this.authToken && ch.send(JSON.stringify({
+                        type: "auth",
+                        fingerprint: localFingerprint,
+                        hmac: btoa(String.fromCharCode(...new Uint8Array(sign)))
+                    }));
+                } else {
+                    this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+                }
             },
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
@@ -726,7 +746,17 @@ class ElectronStreamProvider {
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
         } else if (msg.type == 'auth') {
-            cm.authStatus ||= msg.token == cm.settings.localToken;
+            if (msg.hmac) {
+                // TODO: validate fingerprint
+                let enc = new TextEncoder();
+                let key = await crypto.subtle.importKey('raw', enc.encode(cm.settings.localToken),
+                    { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+                let sign = await crypto.subtle.sign('HMAC', key, enc.encode(msg.fingerprint));
+                let sign64 = btoa(String.fromCharCode(...new Uint8Array(sign)));
+                cm.authStatus ||= msg.hmac == sign64;
+            } else {
+                cm.authStatus ||= msg.token == cm.settings.localToken;
+            }
             ch.send(JSON.stringify({ type: 'authResult', result: cm.authStatus }));
             console.log('Auth result', cm.authStatus);
         } else {
@@ -982,6 +1012,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             document.body.classList.add('player');
             let roomId = currentDevice.roomId;
             player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId + "." + currentStreamId, videoEl);
+            player.authToken = currentDevice.token;
+            if (globalThis.rtcFileSystemManager) {
+                globalThis.storageAccessors ??= {};
+                // defined in ../app/rtcfilesystem-client.js
+                player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + roomId, 'files');
+            }
             player.onstatechange = (state) => {
                 if (state == "connected") {
                     videoEl.style.display = "block";
