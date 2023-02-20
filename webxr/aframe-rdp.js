@@ -279,7 +279,6 @@ AFRAME.registerComponent('webrtc-rdp', {
 	playerConn: null,
 	/** @type {HTMLVideoElement} */
 	videoEl: null,
-	roomIdSuffix: '.1',
 	width: 0,
 	height: 0,
 	init() {
@@ -523,7 +522,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		}
 		this._updateScreen(null);
 		this._byName('statusMessage').setAttribute('value', 'Connecting...');
-		let roomId = data.roomId || settings.roomId + this.roomIdSuffix;
+		let roomId = data.roomId || settings.roomId;
 
 		if (this.el.components.xywindow) {
 			this.el.setAttribute("xywindow", "title", this._settingName(settings));

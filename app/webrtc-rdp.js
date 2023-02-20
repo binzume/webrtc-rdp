@@ -322,7 +322,7 @@ class PlayerConnection extends BaseConnection {
                         console.log("Failed to get DTLS cert fingerprint");
                         return;
                     }
-                    let localFingerprint =  m[1];
+                    let localFingerprint = m[1];
                     console.log("local fingerprint:", localFingerprint);
                     let enc = new TextEncoder();
                     let key = await crypto.subtle.importKey('raw', enc.encode(this.authToken),
@@ -410,7 +410,7 @@ class ConnectionManager {
         let id = this._genId();
         let roomId = this.settings.publishRoomId || this.settings.roomId;
         name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-        let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + "." + id, mediaStream, messageHandler);
+        let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''), mediaStream, messageHandler);
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
 
@@ -517,6 +517,11 @@ class StreamSelectScreen {
             let n = Math.floor((y - layout.top) / (this.buttonSpec.height + layout.spacing));
             if (this._streams[n]) {
                 this._redirect(cm, ch, n);
+            }
+        } else if (msg.type == 'auth' && msg.requestServices && !msg.requestServices.includes('screen')) {
+            // TODO: fs only stream.
+            if (this._streams[0]) {
+                this._redirect(cm, ch, 0);
             }
         }
     }
@@ -1001,7 +1006,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     let player = null;
     /** @type {HTMLVideoElement} */
     let videoEl = document.querySelector('#screen');
-    let currentStreamId = "1";
     /** @type {DeviceSettings} */
     let currentDevice = null;
     let playStream = () => {
@@ -1011,7 +1015,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
             document.getElementById('connectingBox').style.display = "block";
             document.body.classList.add('player');
             let roomId = currentDevice.roomId;
-            player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId + "." + currentStreamId, videoEl);
+            player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId, videoEl);
             player.authToken = currentDevice.token;
             if (globalThis.rtcFileSystemManager) {
                 globalThis.storageAccessors ??= {};
