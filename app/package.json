@@ -1,6 +1,6 @@
 {
   "name": "webrtc-rdp-app",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "WebRTC RDP application",
   "main": "main.js",
   "scripts": {
@@ -20,8 +20,8 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^19.0.0",
-    "electron-builder": "^22.14.13",
-    "electron-rebuild": "^3.2.7"
+    "electron-builder": "^23.6.0",
+    "@electron/rebuild": "^3.2.10"
   },
   "dependencies": {
     "@open-ayame/ayame-web-sdk": "^2022.1.0",
