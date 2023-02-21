@@ -172,10 +172,10 @@ class BaseConnection {
         if (c && !c.ch) {
             console.log('datachannel', ch.label);
             c.ch = ch;
-            ch.onmessage = c.onmessage?.bind(ch, ch);
+            ch.onmessage = c.onmessage?.bind(c, ch);
             // NOTE: dataChannel.onclose = null in Ayame web sdk.
-            c.onopen && ch.addEventListener('open', c.onopen.bind(ch, ch));
-            c.onclose && ch.addEventListener('close', c.onclose.bind(ch, ch));
+            c.onopen && ch.addEventListener('open', c.onopen.bind(c, ch));
+            c.onclose && ch.addEventListener('close', c.onclose.bind(c, ch));
         }
     }
 }
@@ -409,8 +409,14 @@ class ConnectionManager {
     addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true) {
         let id = this._genId();
         let roomId = this.settings.publishRoomId || this.settings.roomId;
-        name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-        let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''), mediaStream, messageHandler);
+        let conn;
+        if (mediaStream == null) {
+            conn = new BaseConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''));
+            conn.dataChannels['controlEvent'] = messageHandler || {};
+        } else {
+            name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
+            conn = new PublisherConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''), mediaStream, messageHandler);
+        }
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
 
@@ -422,12 +428,31 @@ class ConnectionManager {
         }
         return info;
     }
+
     removeStream(id) {
         let index = this._connections.findIndex(c => c.id == id);
         if (index >= 0) {
             this._connections[index].conn.dispose();
             this._connections.splice(index, 1);
         }
+    }
+    async auth(msg, ch, reply = false) {
+        let result = false;
+        if (msg.hmac) {
+            // TODO: validate fingerprint
+            let enc = new TextEncoder();
+            let key = await crypto.subtle.importKey('raw', enc.encode(this.settings.localToken),
+                { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+            let sign = await crypto.subtle.sign('HMAC', key, enc.encode(msg.fingerprint));
+            let sign64 = btoa(String.fromCharCode(...new Uint8Array(sign)));
+            result = msg.hmac == sign64;
+        } else {
+            result = msg.token == this.settings.localToken;
+        }
+        console.log('Auth result', result);
+        this.authStatus ||= result;
+        reply && ch.send(JSON.stringify({ type: 'authResult', result: this.authStatus }));
+        return this.authStatus;
     }
     _genId() {
         let n = 1;
@@ -439,7 +464,6 @@ class ConnectionManager {
         this._connections = [];
     }
 }
-
 
 class StreamSelectScreen {
     /**
@@ -518,10 +542,20 @@ class StreamSelectScreen {
             if (this._streams[n]) {
                 this._redirect(cm, ch, n);
             }
-        } else if (msg.type == 'auth' && msg.requestServices && !msg.requestServices.includes('screen')) {
-            // TODO: fs only stream.
-            if (this._streams[0]) {
-                this._redirect(cm, ch, 0);
+        } else if (msg.type == 'auth') {
+            let authResult = await cm.auth(msg, ch);
+            if (authResult && msg.requestServices && !msg.requestServices.includes('screen')) {
+                let c = await cm.addStream(null, {
+                    onmessage: async (ch, ev) => {
+                        let msg = JSON.parse(ev.data);
+                        if (msg.type == 'auth') {
+                            await cm.auth(msg, ch, true);
+                        }
+                    },
+                }, 'file server', true, false);
+                if (c) {
+                    ch.send(JSON.stringify({ type: 'redirect', 'roomId': c.conn.roomId }));
+                }
             }
         }
     }
@@ -620,10 +654,12 @@ class BrowserStreamProvider {
         }
         let target = stream.isCamera ? null : this._getTarget(stream.mediaStream);
         let c = cm.addStream(stream.mediaStream, {
-            onmessage: (_ch, ev) => {
+            onmessage: async (ch, ev) => {
                 let msg = JSON.parse(ev.data);
                 if (this.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key')) {
                     this.sendInputEvent(target, msg);
+                } else if (msg.type == 'auth') {
+                    await cm.auth(msg, ch, true);
                 }
             },
         }, null, true, permanent);
@@ -751,19 +787,7 @@ class ElectronStreamProvider {
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
         } else if (msg.type == 'auth') {
-            if (msg.hmac) {
-                // TODO: validate fingerprint
-                let enc = new TextEncoder();
-                let key = await crypto.subtle.importKey('raw', enc.encode(cm.settings.localToken),
-                    { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
-                let sign = await crypto.subtle.sign('HMAC', key, enc.encode(msg.fingerprint));
-                let sign64 = btoa(String.fromCharCode(...new Uint8Array(sign)));
-                cm.authStatus ||= msg.hmac == sign64;
-            } else {
-                cm.authStatus ||= msg.token == cm.settings.localToken;
-            }
-            ch.send(JSON.stringify({ type: 'authResult', result: cm.authStatus }));
-            console.log('Auth result', cm.authStatus);
+            await cm.auth(msg, ch, true);
         } else {
             console.log("drop:", msg);
         }
