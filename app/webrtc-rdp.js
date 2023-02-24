@@ -172,11 +172,26 @@ class BaseConnection {
         if (c && !c.ch) {
             console.log('datachannel', ch.label);
             c.ch = ch;
-            ch.onmessage = c.onmessage?.bind(c, ch);
+            ch.onmessage = (ev) => c.onmessage?.(ch, ev);
             // NOTE: dataChannel.onclose = null in Ayame web sdk.
-            c.onopen && ch.addEventListener('open', c.onopen.bind(c, ch));
-            c.onclose && ch.addEventListener('close', c.onclose.bind(c, ch));
+            ch.addEventListener('open', (ev) => c.onopen?.(ch, ev));
+            ch.addEventListener('close', (ev) => c.onclose?.(ch, ev));
         }
+    }
+    getFingerprint(remote = false) {
+        let m = (remote ? this.conn._pc.currentRemoteDescription : this.conn._pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+        if (!m) {
+            console.log("Failed to get DTLS cert fingerprint");
+            return null;
+        }
+        return m[1];
+    }
+    async getEncodedFingerprint(password, fingerprint) {
+        let enc = new TextEncoder();
+        let key = await crypto.subtle.importKey('raw', enc.encode(password),
+            { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+        let sign = await crypto.subtle.sign('HMAC', key, enc.encode(fingerprint));
+        return btoa(String.fromCharCode(...new Uint8Array(sign)));
     }
 }
 
@@ -292,11 +307,27 @@ class PublisherConnection extends BaseConnection {
      */
     constructor(signalingUrl, signalingKey, roomId, mediaStream, messageHandler = null) {
         super(signalingUrl, signalingKey, roomId);
-        this.options.video.direction = 'sendonly';
-        this.options.audio.direction = 'sendonly';
-        this.mediaStream = mediaStream;
+        if (mediaStream) {
+            this.options.video.direction = 'sendonly';
+            this.options.audio.direction = 'sendonly';
+            this.mediaStream = mediaStream;
+        }
         this.reconnectWaitMs = 3000;
         this.dataChannels['controlEvent'] = messageHandler || {};
+        this.onauth = null;
+    }
+    async auth(msg, ch, password, reply = false) {
+        let result = false;
+        if (msg.hmac) {
+            let hmac = await this.getEncodedFingerprint(password, this.getFingerprint(true));
+            result = msg.hmac == hmac;
+        } else {
+            result = msg.token == password;
+        }
+        console.log('Auth result', result);
+        result && this.onauth?.();
+        reply && ch.send(JSON.stringify({ type: 'authResult', result: result }));
+        return result;
     }
 }
 
@@ -317,21 +348,11 @@ class PlayerConnection extends BaseConnection {
             onopen: async (ch, ev) => {
                 if (this.authToken && this.conn._pc && window.crypto?.subtle) {
                     // use HMAC
-                    let m = this.conn._pc.currentLocalDescription.sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
-                    if (!m) {
-                        console.log("Failed to get DTLS cert fingerprint");
-                        return;
-                    }
-                    let localFingerprint = m[1];
-                    console.log("local fingerprint:", localFingerprint);
-                    let enc = new TextEncoder();
-                    let key = await crypto.subtle.importKey('raw', enc.encode(this.authToken),
-                        { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
-                    let sign = await crypto.subtle.sign('HMAC', key, enc.encode(localFingerprint));
-                    this.authToken && ch.send(JSON.stringify({
+                    let localFingerprint = this.getFingerprint(false);
+                    ch.send(JSON.stringify({
                         type: "auth",
                         fingerprint: localFingerprint,
-                        hmac: btoa(String.fromCharCode(...new Uint8Array(sign)))
+                        hmac: await this.getEncodedFingerprint(this.authToken, localFingerprint)
                     }));
                 } else {
                     this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
@@ -340,7 +361,7 @@ class PlayerConnection extends BaseConnection {
             onmessage: (ch, ev) => {
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'redirect' && msg.roomId) {
-                    this.disconnect();
+                    this.disconnect('redirect');
                     this.roomId = msg.roomId;
                     this.connect();
                 } else if (msg.type == 'rpcResult') {
@@ -409,14 +430,8 @@ class ConnectionManager {
     addStream(mediaStream, messageHandler = null, name = null, connect = true, permanent = true) {
         let id = this._genId();
         let roomId = this.settings.publishRoomId || this.settings.roomId;
-        let conn;
-        if (mediaStream == null) {
-            conn = new BaseConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''));
-            conn.dataChannels['controlEvent'] = messageHandler || {};
-        } else {
-            name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
-            conn = new PublisherConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''), mediaStream, messageHandler);
-        }
+        name = name || mediaStream.getVideoTracks()[0]?.label || mediaStream.id;
+        let conn = new PublisherConnection(signalingUrl, signalingKey, roomId + (id != 1 ? '.' + id : ''), mediaStream, messageHandler);
         conn.connectTimeoutMs = permanent ? -1 : 30000;
         conn.reconnectWaitMs = permanent ? 2000 : -1;
 
@@ -437,22 +452,8 @@ class ConnectionManager {
         }
     }
     async auth(msg, ch, reply = false) {
-        let result = false;
-        if (msg.hmac) {
-            // TODO: validate fingerprint
-            let enc = new TextEncoder();
-            let key = await crypto.subtle.importKey('raw', enc.encode(this.settings.localToken),
-                { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
-            let sign = await crypto.subtle.sign('HMAC', key, enc.encode(msg.fingerprint));
-            let sign64 = btoa(String.fromCharCode(...new Uint8Array(sign)));
-            result = msg.hmac == sign64;
-        } else {
-            result = msg.token == this.settings.localToken;
-        }
-        console.log('Auth result', result);
-        this.authStatus ||= result;
-        reply && ch.send(JSON.stringify({ type: 'authResult', result: this.authStatus }));
-        return this.authStatus;
+        let c = this._connections.find(c => c.conn.dataChannels['controlEvent']?.ch == ch);
+        return await c?.conn.auth(msg, ch, this.settings.localToken, reply);
     }
     _genId() {
         let n = 1;
@@ -556,6 +557,11 @@ class StreamSelectScreen {
                 if (c) {
                     ch.send(JSON.stringify({ type: 'redirect', 'roomId': c.conn.roomId }));
                 }
+            } else if (authResult) {
+                if (this._attachCount == 1) {
+                    await this.update();
+                }
+                this._streams.length == 1 && this._redirect(cm, ch, 0);
             }
         }
     }
@@ -563,10 +569,6 @@ class StreamSelectScreen {
         this._attachCount++;
         if (this._attachCount == 1) {
             this._updateTimer = setInterval(() => this.update(), 1000);
-            await this.update();
-        }
-        if (this._streams.length == 1) {
-            this._redirect(cm, ch, 0);
         }
     }
     _detach() {
@@ -957,7 +959,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                 onclick: (ev) => confirm(`Remove ${name} ?`) && Settings.removePeerDevice(d)
             });
             cm.onadded = (c) => {
-                if (fileServer) { c.conn.dataChannels['fileServer'] = fileServer.getRtcChannelSpec(); }
+                if (fileServer) {
+                    c.conn.dataChannels['fileServer'] = {};
+                    c.conn.onauth = () => {
+                        Object.assign(c.conn.dataChannels['fileServer'], fileServer.getRtcChannelSpec());
+                    };
+                }
                 let el = mkEl('li');
                 listEl.appendChild(el);
                 c.conn.onstatechange = () => {
@@ -971,7 +978,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     }
                     el.innerText = '';
                     el.append(
-                        mkEl('span', c.id + " : " + c.name, { className: 'streamName', title: c.conn.roomId }),
+                        mkEl('span', c.name, { className: 'streamName', title: c.conn.roomId }),
                         mkEl('span', c.conn.state, { className: 'connectionstate connectionstate_' + c.conn.state }),
                     );
                     if (c.conn.state == 'connected') {
@@ -1104,7 +1111,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         }
     });
     document.getElementById('playButton')?.addEventListener('click', (ev) => playStream());
-    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => videoEl.requestFullscreen());
+    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => document.getElementById('player').requestFullscreen());
     document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
         player?.disconnect();
         document.body.classList.remove('player');
