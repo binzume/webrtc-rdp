@@ -180,6 +180,7 @@ class BaseConnection {
     }
     getFingerprint(remote = false) {
         let m = (remote ? this.conn._pc.currentRemoteDescription : this.conn._pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+        console.log(this.conn, this.conn._pc.currentRemoteDescription);
         if (!m) {
             console.log("Failed to get DTLS cert fingerprint");
             return null;
@@ -414,7 +415,7 @@ class ConnectionManager {
     constructor(settings) {
         this.settings = settings;
         this.onadded = null;
-        this.authStatus = settings.localToken == null;
+        this.disableAuth = !settings.localToken;
         /**  @type {ConnectionInfo[]} */
         this._connections = [];
     }
@@ -655,13 +656,14 @@ class BrowserStreamProvider {
             return null;
         }
         let target = stream.isCamera ? null : this._getTarget(stream.mediaStream);
+        let authorized = cm.disableAuth;
         let c = cm.addStream(stream.mediaStream, {
             onmessage: async (ch, ev) => {
                 let msg = JSON.parse(ev.data);
-                if (this.sendInputEvent && (msg.type == 'mouse' || msg.type == 'key')) {
+                if (msg.type == 'auth') {
+                    authorized = await cm.auth(msg, ch, true);
+                } else if (authorized && this.sendInputEvent) {
                     this.sendInputEvent(target, msg);
-                } else if (msg.type == 'auth') {
-                    await cm.auth(msg, ch, true);
                 }
             },
         }, null, true, permanent);
@@ -745,8 +747,16 @@ class ElectronStreamProvider {
                 return await this.pseudoStreams[s.id].startStream(cm, s, permanent);
             }
             let mediaStream = await this.getMediaStream(s);
+            let authorized = cm.disableAuth;
             return cm.addStream(mediaStream, {
-                onmessage: (ch, ev) => this._handleMessage(cm, s, ch, JSON.parse(ev.data))
+                onmessage: async (ch, ev) => {
+                    let msg = JSON.parse(ev.data);
+                    if (msg.type == 'auth') {
+                        authorized = await cm.auth(msg, ch, true);
+                    } else if (authorized) {
+                        this._handleMessage(cm, s, ch, msg)
+                    }
+                }
             }, s.name, true, permanent);
         } catch (e) {
             console.log(e);
@@ -760,7 +770,6 @@ class ElectronStreamProvider {
      * @param {object} msg 
      */
     async _handleMessage(cm, s, ch, msg) {
-        // TODO: check cm.authStatus
         if (msg.type == 'mouse') {
             let now = Date.now();
             if (now - this._lastMouseMoveTime < 10 && msg.action == 'move') {
@@ -788,8 +797,6 @@ class ElectronStreamProvider {
                 ch.send(JSON.stringify({ type: 'redirect', reqId: msg.reqId, roomId: c?.conn.roomId }));
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
-        } else if (msg.type == 'auth') {
-            await cm.auth(msg, ch, true);
         } else {
             console.log("drop:", msg);
         }
@@ -866,14 +873,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         fileServer = new FileServer(new FileSystemHandleArray()); // !! Global variable
         let targetEl = document.body;
         let listEl = document.getElementById('files');
-        let addEntry = (handle) => {
-            fileServer.fs.handle.addEntry(handle);
-            let el = mkEl('li', [
-                'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
-                mkEl('button', 'x', { onclick: (_) => { fileServer.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); }, title: 'Stop sharing' })
-            ]);
-            listEl.append(el);
-        };
         targetEl.addEventListener('dragover', (ev) => ev.preventDefault());
         targetEl.addEventListener('drop', (ev) => {
             ev.preventDefault();
@@ -885,7 +884,12 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     // @ts-ignore
                     const handle = await item.getAsFileSystemHandle();
                     if (await handle.queryPermission({ mode: "read" }) == 'granted') {
-                        addEntry(handle);
+                        fileServer.fs.handle.addEntry(handle);
+                        let el = mkEl('li', [
+                            'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
+                            mkEl('button', 'x', { onclick: (_) => { fileServer.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); }, title: 'Stop sharing' })
+                        ]);
+                        listEl.append(el);
                     }
                 })();
             }
