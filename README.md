@@ -26,7 +26,7 @@ Demo URL:
 |-----------|-------------|-------|--------------|
 | Screen    | send/recv   | recv  | send/recv    |
 | Mouse/Kbd | send/(recv) | send  | send/recv    |
-| File      | send        | recv  | send         |
+| File      | send/(recv) | recv  | send         |
 
 ### Mouse/Keyboard
 
@@ -38,8 +38,8 @@ Demo URL:
 
 ホスト側の画面にファイルやディレクトリをドラッグ＆ドロップすると共有されます．
 
-- WebXR版のクライアントの `Storage` に追加されます
-- まだWebXR以外のUIを用意してないです
+- WebXR版のクライアントでデスクトップに接続すると `Storage` に追加されます
+- VRではないWeb UIは別リポジトリの https://github.com/binzume/webrtcfs-web にあります
 
 ## Electron App
 
@@ -91,9 +91,9 @@ Oculus Touchコントローラーのボタン割当:
 
 ## TODO
 
-- WebXR時にレンダリング面積に合わせて元のvideo解像度を変える
+- WebXR時にレンダリング面積に合わせたvideo解像度変更
 - クリップボード共有機能
-
+- UIを分かりやすくする
 ## License
 
 MIT
