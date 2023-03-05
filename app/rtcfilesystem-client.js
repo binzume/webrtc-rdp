@@ -7,20 +7,22 @@ class RTCFileSystemClient {
         /** @type {(WebSocket | RTCDataChannel)[]} */
         this.sockets = [];
         this.available = false;
+        this._onAvailable = null;
         this.disconnectDelayMs = 5000;
         this.ondisconnected = null;
         this._disconnectTimer = null;
         this._seq = 0;
         /** @type {Record<string, {resolve:any, reject:any}>} */
         this._req = {};
+        this.setAvailable(false);
     }
     /** @returns {Promise<RTCFileSystemFileStat>} */
     async stat(path) {
         return await this._request({ op: 'stat', path: path });
     }
     /** @returns {Promise<RTCFileSystemFileStat[]>} */
-    async files(path, offset = 0, limit = -1) {
-        return await this._request({ op: 'files', path: path, p: offset, l: limit });
+    async files(path, offset = 0, limit = -1, options = null) {
+        return await this._request({ op: 'files', path: path, p: offset, l: limit, options: options });
     }
     /** @returns {Promise<ArrayBuffer>} */
     async read(path, offset, len) {
@@ -100,18 +102,30 @@ class RTCFileSystemClient {
         }
     }
 
-    addSocket(socket) {
+    addSocket(socket, ready = true) {
+        socket.binaryType = 'arraybuffer';
         clearTimeout(this._disconnectTimer);
-        this._disconnectTimer = null;
+        this._disconnectTimer = 0;
         this.sockets.push(socket);
-        this.available = true;
+        ready && this.setAvailable(true);
+    }
+    setAvailable(available) {
+        this.available = available;
+        if (available) {
+            this._onAvailable && this._onAvailable(0);
+        } else {
+            this._waitSocket = new Promise(r => this._onAvailable = r);
+        }
+    }
+    async wait() {
+        this.available || await this._waitSocket;
     }
     removeSocket(socket) {
         this.sockets = this.sockets.filter(s => s != socket);
         if (this.sockets.length == 0) {
             this.reset();
             this._disconnectTimer = setTimeout(() => {
-                this.available = false;
+                this.setAvailable(false);
                 this.ondisconnected?.();
             }, this.disconnectDelayMs);
         }
@@ -123,24 +137,25 @@ class RTCFileSystemClient {
     }
 }
 
-/** @typedef {{name: string, type: string, size: number, updatedTime: number, tags: string[], path:string, thumbnail:any, [k:string]: any}} RTCFileSystemClientFile */
-
+/**
+ * @implements {Folder}
+ */
 class RTCFileSystemClientFolder {
     /**
      * @param {RTCFileSystemClient} client 
      * @param {string} name
      * @param {string} path 
-     * @param {Record<string, any>} options 
+     * @param {string} prefix 
      */
-    constructor(client, path, name, options = {}) {
+    constructor(client, path, name, prefix = '') {
         this.name = name;
         this.path = path;
         this.size = -1; // unknown size
         this._client = client;
-        this._options = options;
         this._pageSize = 100;
         this._pageCacheMax = 5;
-        /** @type {Map<number, {value?: RTCFileSystemClientFile[], task?: Promise<RTCFileSystemClientFile[]>, ac?: AbortController}>} */
+        this._pathPrefix = prefix;
+        /** @type {Map<number, {value?: FileInfo[], task?: Promise<FileInfo[]>, ac?: AbortController}>} */
         this._pageCache = new Map();
         this.onupdate = null;
     }
@@ -150,7 +165,7 @@ class RTCFileSystemClientFolder {
     }
 
     /**
-     * @returns {Promise<RTCFileSystemClientFile>}
+     * @returns {Promise<FileInfo>}
      */
     async get(position) {
         if (position < 0 || this.size >= 0 && position >= this.size) throw "out of range";
@@ -164,6 +179,45 @@ class RTCFileSystemClientFolder {
         let result = await this._load(position / this._pageSize | 0);
         return result && result[position % this._pageSize];
     }
+
+    /** @returns {Promise<{items: FileInfo[], next: number}>} */
+    async getFiles(offset, limit = 100, options = null, signal = null) {
+        let filesopt = options && options.sortField ? { sort: (options.sortOrder == 'd' ? '-' : '') + options.sortField } : null;
+        let client = this._client;
+        await client.wait();
+        signal?.throwIfAborted();
+        let files = await client.files(this.path, offset, limit, filesopt);
+        let dir = this.path != '' ? this.path + '/' : '';
+        let items = files.map(f => ({
+            name: f.name,
+            type: f.type == 'directory' ? 'folder' : f.type,
+            size: f.size,
+            updatedTime: f.updatedTime,
+            tags: f.metadata?.tags || [],
+            path: this._pathPrefix + dir + f.name,
+            async fetch(start = 0, end = -1) {
+                return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type, 'Content-Length': '' + f.size } });
+            },
+            update(blob) { return client.write(dir + f.name, 0, blob); },
+            remove() { return client.remove(dir + f.name); },
+            thumbnail: f.metadata?.thumbnail ? {
+                type: 'image/jpeg',
+                async fetch(start = 0, end = -1) {
+                    return new Response(client.readStream(dir + f.name + f.metadata?.thumbnail, start, end < 0 ? 32768 : end), { headers: { 'Content-Type': 'image/jpeg' } });
+                }
+            } : null,
+        }));
+        let sz = offset + items.length + (items.length >= limit ? 1 : 0);
+        if (sz > this.size) {
+            this.size = sz;
+            this.onupdate?.();
+        }
+        return {
+            items: items,
+            next: items.length >= limit ? offset + limit : null,
+        };
+    }
+
     /**
      * @returns {string}
      */
@@ -171,7 +225,7 @@ class RTCFileSystemClientFolder {
         if (this.path == '' || this.path == '/') {
             return null;
         }
-        return this.path.substring(0, this.path.lastIndexOf('/'));
+        return this._pathPrefix + this.path.substring(0, this.path.lastIndexOf('/'));
     }
     _getOrNull(position) {
         let page = position / this._pageSize | 0;
@@ -184,7 +238,7 @@ class RTCFileSystemClientFolder {
         return null;
     }
 
-    /** @returns {Promise<RTCFileSystemClientFile[]>} */
+    /** @returns {Promise<FileInfo[]>} */
     async _load(page) {
         let cache = this._pageCache.get(page);
         if (cache != null) {
@@ -202,33 +256,10 @@ class RTCFileSystemClientFolder {
         let ac = new AbortController();
         let task = (async (signal) => {
             await new Promise((resolve) => setTimeout(resolve, this._pageCache.size));
-            console.log("fetch page:", page, signal.aborted);
-            if (signal.aborted) { throw 'abort'; }
+            signal.throwIfAborted();
             let offset = page * this._pageSize;
-            let files = await this._client.files(this.path, offset, this._pageSize);
-
-            let dir = this.path != '' ? this.path + '/' : '';
-            let client = this._client;
-            let items = files.map(f => ({
-                name: f.name,
-                type: f.type == 'directory' ? 'folder' : f.type,
-                size: f.size,
-                updatedTime: f.updatedTime,
-                tags: f.metadata?.tags || [],
-                path: dir + f.name,
-                async fetch(start = 0, end = -1) {
-                    return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type, 'Content-Length': '' + f.size } });
-                },
-                update(blob) { return client.write(dir + f.name, 0, blob); },
-                remove() { return client.remove(dir + f.name); },
-                thumbnail: f.metadata?.thumbnail ? {
-                    type: 'image/jpeg',
-                    async fetch(start = 0, end = -1) {
-                        return new Response(client.readStream(dir + f.name + f.metadata?.thumbnail, start, end < 0 ? 32768 : end), { headers: { 'Content-Type': 'image/jpeg' } });
-                    }
-                } : null,
-            }));
-            return items;
+            let r = await this.getFiles(offset, this._pageSize, null, signal);
+            return r.items;
         })(ac.signal);
         try {
             this._pageCache.set(page, { task, ac });
@@ -272,8 +303,9 @@ class RTCFileSystemManager {
                         globalThis.storageAccessors[id] = {
                             name: name,
                             root: '',
-                            shortcuts: {},
-                            getList: (folder, options) => new RTCFileSystemClientFolder(this._clients[id], folder, folder || name, options)
+                            getList: (folder, options) => new RTCFileSystemClientFolder(this._clients[id], folder, folder || name),
+                            getFolder: (path, prefix) => new RTCFileSystemClientFolder(this._clients[id], path, path || name, prefix),
+                            parsePath: (path) => path ? path.split('/').map(p => [p]) : [],
                         };
                     }
                     this._clients[id].ondisconnected = () => {

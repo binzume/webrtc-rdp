@@ -31,9 +31,9 @@ declare interface StreamProvider {
 
 declare interface DataChannelInfo {
     onmessage?: ((ch: RTCDataChannel, ev: MessageEvent) => void)
-    onopen?: ((ch: RTCDataChannel, ev: RTCDataChannelEvent) => void)
+    onopen?: ((ch: RTCDataChannel, ev: Event) => void)
     onclose?: ((ch: RTCDataChannel, ev: Event) => void)
-    ch?: RTCDataChannel|null
+    ch?: RTCDataChannel | null
 }
 
 declare interface DeviceSettings {
@@ -45,3 +45,34 @@ declare interface DeviceSettings {
     userAgent: string
     token: string
 }
+
+
+declare interface FileInfo {
+    type: string;
+    name: string;
+    size: number;
+    path: string;
+    updatedTime: number;
+    tags?: string[];
+    thumbnail?: { [k: string]: any };
+    remove?(): any;
+    [k: string]: any;
+}
+
+declare interface FilesResult {
+    name?: string;
+    items: FileInfo[];
+    next: any;
+    more?: boolean;
+}
+
+declare interface Folder {
+    getFiles(offset: any, limit: number, options: object, signal: AbortSignal): Promise<FilesResult>;
+}
+
+declare interface FolderResolver {
+    getFolder(path: string, prefix?: string): Folder;
+    parsePath(path: string): string[][];
+}
+
+declare var storageAccessors: Record<string, FolderResolver & { name: string, [k: string]: any; }> | undefined;

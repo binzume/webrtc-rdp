@@ -102,6 +102,7 @@ class BaseConnection {
     setupConnection() {
         console.log("connecting..." + this.signalingUrl + " " + this.roomId);
         this.updateState('connecting');
+        clearTimeout(this._connectTimer);
         if (this.connectTimeoutMs > 0) {
             this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
         }
@@ -109,7 +110,7 @@ class BaseConnection {
         let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
         conn.on('open', async (e) => {
             for (let c of Object.keys(this.dataChannels)) {
-                this.handleDataChannel(await conn.createDataChannel(c));
+                this._handleDataChannel(await conn.createDataChannel(c));
             }
             this.updateState('waiting');
         });
@@ -118,7 +119,7 @@ class BaseConnection {
             this.updateState('connected');
         });
         conn.on('datachannel', (channel) => {
-            this.handleDataChannel(channel);
+            this._handleDataChannel(channel);
         });
         conn.on('disconnect', (e) => {
             this.conn = null;
@@ -139,12 +140,12 @@ class BaseConnection {
             this.conn = null;
         }
         if (reason != 'dispose' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
-            setTimeout(() => this.connect(), this.reconnectWaitMs);
+            this._connectTimer = setTimeout(() => this.connect(), this.reconnectWaitMs);
         }
         for (let c of Object.values(this.dataChannels)) {
             c.ch = null;
         }
-        this.updateState('disconnected');
+        this.updateState('disconnected', reason);
     }
     dispose() {
         this.disconnect('dispose');
@@ -154,19 +155,20 @@ class BaseConnection {
     }
     /**
      * @param {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} s
+     * @param {string|null} reason 
      */
-    updateState(s) {
+    updateState(s, reason = null) {
         if (s != this.state && this.state != 'disposed') {
             console.log(this.roomId, s);
             let oldState = this.state;
             this.state = s;
-            this.onstatechange && this.onstatechange(s, oldState);
+            this.onstatechange && this.onstatechange(s, oldState, reason);
         }
     }
     /**
      * @param {RTCDataChannel|null} ch
      */
-    handleDataChannel(ch) {
+    _handleDataChannel(ch) {
         if (!ch) return;
         let c = this.dataChannels[ch.label];
         if (c && !c.ch) {
@@ -179,15 +181,11 @@ class BaseConnection {
         }
     }
     getFingerprint(remote = false) {
-        let m = (remote ? this.conn._pc.currentRemoteDescription : this.conn._pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
-        console.log(this.conn, this.conn._pc.currentRemoteDescription);
-        if (!m) {
-            console.log("Failed to get DTLS cert fingerprint");
-            return null;
-        }
-        return m[1];
+        let pc = this.conn._pc;
+        let m = pc && (remote ? pc.currentRemoteDescription : pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+        return m && m[1];
     }
-    async getEncodedFingerprint(password, fingerprint) {
+    async hmacSha256(password, fingerprint) {
         let enc = new TextEncoder();
         let key = await crypto.subtle.importKey('raw', enc.encode(password),
             { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
@@ -320,7 +318,7 @@ class PublisherConnection extends BaseConnection {
     async auth(msg, ch, password, reply = false) {
         let result = false;
         if (msg.hmac) {
-            let hmac = await this.getEncodedFingerprint(password, this.getFingerprint(true));
+            let hmac = await this.hmacSha256(password, this.getFingerprint(true));
             result = msg.hmac == hmac;
         } else {
             result = msg.token == password;
@@ -347,16 +345,15 @@ class PlayerConnection extends BaseConnection {
         this.authToken = null;
         this.dataChannels['controlEvent'] = {
             onopen: async (ch, ev) => {
-                if (this.authToken && this.conn._pc && window.crypto?.subtle) {
-                    // use HMAC
-                    let localFingerprint = this.getFingerprint(false);
+                let localFingerprint = this.getFingerprint(false);
+                if (localFingerprint && window.crypto?.subtle) {
                     ch.send(JSON.stringify({
                         type: "auth",
                         fingerprint: localFingerprint,
-                        hmac: await this.getEncodedFingerprint(this.authToken, localFingerprint)
+                        hmac: await this.hmacSha256(this.authToken, localFingerprint)
                     }));
                 } else {
-                    this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+                    ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
                 }
             },
             onmessage: (ch, ev) => {
