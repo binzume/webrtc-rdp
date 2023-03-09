@@ -143,41 +143,15 @@ class RTCFileSystemClient {
 class RTCFileSystemClientFolder {
     /**
      * @param {RTCFileSystemClient} client 
-     * @param {string} name
      * @param {string} path 
-     * @param {string} prefix 
+     * @param {string} prefix
      */
-    constructor(client, path, name, prefix = '') {
-        this.name = name;
-        this.path = path;
-        this.size = -1; // unknown size
+    constructor(client, path, prefix) {
         this._client = client;
-        this._pageSize = 100;
-        this._pageCacheMax = 5;
-        this._pathPrefix = prefix;
-        /** @type {Map<number, {value?: FileInfo[], task?: Promise<FileInfo[]>, ac?: AbortController}>} */
-        this._pageCache = new Map();
+        this.path = path;
+        this._pathPrefix = prefix || '';
+        this.size = -1; // unknown size
         this.onupdate = null;
-    }
-
-    async init() {
-        await this.get(0)
-    }
-
-    /**
-     * @returns {Promise<FileInfo>}
-     */
-    async get(position) {
-        if (position < 0 || this.size >= 0 && position >= this.size) throw "out of range";
-        if (!this._client.available) {
-            return null;
-        }
-        let item = this._getOrNull(position);
-        if (item != null) {
-            return item;
-        }
-        let result = await this._load(position / this._pageSize | 0);
-        return result && result[position % this._pageSize];
     }
 
     /** @returns {Promise<{items: FileInfo[], next: number}>} */
@@ -227,58 +201,6 @@ class RTCFileSystemClientFolder {
         }
         return this._pathPrefix + this.path.substring(0, this.path.lastIndexOf('/'));
     }
-    _getOrNull(position) {
-        let page = position / this._pageSize | 0;
-        let cache = this._pageCache.get(page);
-        if (cache) {
-            this._pageCache.delete(page);
-            this._pageCache.set(page, cache);
-            return cache.value?.[position - this._pageSize * page];
-        }
-        return null;
-    }
-
-    /** @returns {Promise<FileInfo[]>} */
-    async _load(page) {
-        let cache = this._pageCache.get(page);
-        if (cache != null) {
-            return (cache.task) ? await cache.task : cache.value;;
-        }
-        for (const [p, c] of this._pageCache) {
-            if (this._pageCache.size < this._pageCacheMax) {
-                break;
-            }
-            console.log("invalidate: " + p, c.task != null);
-            this._pageCache.delete(p);
-            c.ac?.abort();
-        }
-
-        let ac = new AbortController();
-        let task = (async (signal) => {
-            await new Promise((resolve) => setTimeout(resolve, this._pageCache.size));
-            signal.throwIfAborted();
-            let offset = page * this._pageSize;
-            let r = await this.getFiles(offset, this._pageSize, null, signal);
-            return r.items;
-        })(ac.signal);
-        try {
-            this._pageCache.set(page, { task, ac });
-            let result = await task;
-            if (result.length > 0) {
-                let sz = page * this._pageSize + result.length + (result.length >= this._pageSize ? 1 : 0);
-                if (sz > this.size) {
-                    this.size = sz;
-                    this.onupdate?.();
-                }
-            }
-            if (this._pageCache.has(page)) {
-                this._pageCache.set(page, { value: result });
-            }
-            return result;
-        } catch (e) {
-            this._pageCache.delete(page);
-        }
-    }
 }
 
 class RTCFileSystemManager {
@@ -303,8 +225,7 @@ class RTCFileSystemManager {
                         globalThis.storageAccessors[id] = {
                             name: name,
                             root: '',
-                            getList: (folder, options) => new RTCFileSystemClientFolder(this._clients[id], folder, folder || name),
-                            getFolder: (path, prefix) => new RTCFileSystemClientFolder(this._clients[id], path, path || name, prefix),
+                            getFolder: (path, prefix) => new RTCFileSystemClientFolder(this._clients[id], path, prefix),
                             parsePath: (path) => path ? path.split('/').map(p => [p]) : [],
                         };
                     }
