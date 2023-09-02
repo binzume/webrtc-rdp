@@ -4,7 +4,7 @@
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <title>WebRTC VR RDP</title>
-  <script id='script-aframe' src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script id='script-aframe' src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script id='script-xylayout' src="https://binzume.github.io/aframe-xylayout/dist/xylayout-all.min.js"></script>
   <script id='script-xyresize' src="https://binzume.github.io/aframe-xylayout/experimental/xyresize.js"></script>
   <script id='ayane-web-sdk' src="https://cdn.jsdelivr.net/npm/@open-ayame/ayame-web-sdk@2020.3.0/dist/ayame.js"></script>
@@ -13,7 +13,7 @@
 </head>
 
 <body style="background-color: black; color:white;">
-  <a-scene cursor="rayOrigin: mouse; fuse:false" raycaster="objects:.collidable;far:5500" renderer="antialias: true;">
+  <a-scene cursor="rayOrigin: mouse; fuse:false" raycaster="objects:.collidable" renderer="antialias: true;">
     <a-assets>
     </a-assets>
 
@@ -39,8 +39,8 @@
 
     <a-entity id="camera-rig" >
       <a-camera position="0 1.5 0" look-controls="enabled:false"></a-camera>
-      <a-entity laser-controls="hand: right" raycaster="far:Infinity;objects:.collidable" line="color: #3060a0; opacity: 0.5"></a-entity>
-      <a-entity laser-controls="hand: left" raycaster="far:Infinity;objects:.collidable" line="color: #3060a0; opacity: 0.5"></a-entity>
+      <a-entity laser-controls="hand: right" raycaster="objects:.collidable"></a-entity>
+      <a-entity laser-controls="hand: left" raycaster="objects:.collidable"></a-entity>
       <a-xykeyboard distance="0.7" scale='0.22 0.22 0.22' position="0 0.9 -1" rotation='-30 0 0'></a-xykeyboard>
     </a-entity>
 
