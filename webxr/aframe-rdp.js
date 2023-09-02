@@ -37,6 +37,13 @@ class Settings {
 	/**
 	 * @param {DeviceSettings} deviceInfo 
 	 */
+	static findPeerDevice(roomId) {
+		return this.getPeerDevices().find(d => d.roomId == roomId);
+	}
+
+	/**
+	 * @param {DeviceSettings} deviceInfo 
+	 */
 	static removePeerDevice(deviceInfo) {
 		let devices = this.getPeerDevices();
 		let filtered = devices.filter(d => d.roomId != deviceInfo.roomId);
@@ -133,7 +140,7 @@ class BaseConnection {
 			this.conn.stream = null;
 			this.conn = null;
 		}
-		if (reason != 'dispose' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
+		if (reason != 'dispose' && reason != 'noretry' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
 			setTimeout(() => this.connect(), this.reconnectWaitMs);
 		}
 		for (let c of Object.values(this.dataChannels)) {
@@ -220,6 +227,9 @@ class PlayerConnection extends BaseConnection {
 					this.disconnect();
 					this.roomId = msg.roomId;
 					this.connect();
+				} else if (msg.type == 'auth') {
+					// player and player error
+					this.disconnect();
 				} else if (msg.type == 'authResult') {
 					this.services = msg.services;
 					this.onauth?.(msg.result);
@@ -237,6 +247,9 @@ class PlayerConnection extends BaseConnection {
 		});
 		return conn;
 	}
+	/**
+	 * @param {string|null} reason 
+	 */
 	disconnect(reason = null) {
 		if (this.videoEl.srcObject == this.mediaStream) {
 			this.videoEl.srcObject = null;
@@ -271,9 +284,10 @@ AFRAME.registerComponent('webrtc-rdp', {
 		signalingUrl: { default: "wss://ayame-labo.shiguredo.app/signaling" },
 		settingIndex: { default: -1 },
 		roomId: { default: "" },
-		settingUrl: { default: "/webrtc-rdp/" },
+		streamId: { default: "" },
 		maxWidth: { default: 8 },
 		maxHeight: { default: 6 },
+		settingUrl: { default: "/webrtc-rdp/" },
 	},
 	/** @type {PlayerConnection} */
 	playerConn: null,
@@ -281,6 +295,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 	videoEl: null,
 	width: 0,
 	height: 0,
+	tempRoomId: null,
 	init() {
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");
@@ -348,8 +363,11 @@ AFRAME.registerComponent('webrtc-rdp', {
 					let app = await vrapp.appManager.launch(vrapp.app.id, null, { disableWindowLocator: true });
 					app.object3D.quaternion.copy(this.el.object3D.quaternion);
 					app.setAttribute('position', app.object3D.parent.worldToLocal(position));
-					app.setAttribute('webrtc-rdp', { roomId: r.roomId, settingIndex: this.data.settingIndex, maxWidth: Math.max(scale.x, 1.5), maxHeight: Math.max(scale.y, 1.5) });
-					app.addEventListener('loaded', (_) => app.components['webrtc-rdp']?.resize(scale.x, scale.y), { once: true });
+					app.addEventListener('loaded', (_) => {
+						app.components['webrtc-rdp'].tempRoomId = r.roomId;
+						app.setAttribute('webrtc-rdp', { roomId: this.data.roomId, streamId: stream.id, settingIndex: this.data.settingIndex, maxWidth: Math.max(scale.x, 1.5), maxHeight: Math.max(scale.y, 1.5) });
+						app.components['webrtc-rdp']?.resize(scale.x, scale.y);
+					}, { once: true });
 				}
 			}
 		};
@@ -456,21 +474,24 @@ AFRAME.registerComponent('webrtc-rdp', {
 		screenEl.focus();
 
 		this._byName("connectButton").addEventListener('click', ev => {
-			this.el.setAttribute('webrtc-rdp', { roomId: '' }); // default room
-			this.connect();
-		});
-		this._byName("roomNext").addEventListener('click', ev => {
-			let n = this.data.settingIndex + 1;
-			if (Settings.getPeerDevices()[n]) {
-				this.el.setAttribute('webrtc-rdp', { settingIndex: n });
+			let settings = Settings.getPeerDevices()[this.data.settingIndex];
+			if (settings) {
+				this.el.setAttribute('webrtc-rdp', { roomId: settings.roomId });
 			}
 		});
-		this._byName("roomPrev").addEventListener('click', ev => {
-			let n = this.data.settingIndex - 1;
-			if (Settings.getPeerDevices()[n]) {
-				this.el.setAttribute('webrtc-rdp', { settingIndex: n });
-			}
+		this._byName("addButton").addEventListener('click', ev => {
+			this.el.sceneEl.exitVR();
+			window.open(this.data.settingUrl, '_blank');
 		});
+		let selectSettings = (n) => {
+			let d = Settings.getPeerDevices()[n];
+			if (d) {
+				this.el.setAttribute('webrtc-rdp', { roomId: "", settingIndex: n  });
+				this._byName("roomName").setAttribute('value', this._settingName(d));
+			}
+		};
+		this._byName("roomNext").addEventListener('click', ev => selectSettings(this.data.settingIndex + 1));
+		this._byName("roomPrev").addEventListener('click', ev => selectSettings(this.data.settingIndex - 1));
 
 		let showControls = visible => {
 			visible = visible || (this.playerConn == null && this.data.roomId == '');
@@ -498,34 +519,22 @@ AFRAME.registerComponent('webrtc-rdp', {
 		});
 	},
 	update(oldData) {
-		let d = Settings.getPeerDevices()[this.data.settingIndex];
-		if (d) {
-			this._byName("roomName").setAttribute('value', this._settingName(d));
-		}
-		if (oldData.roomId != this.data.roomId && this.data.roomId) {
-			this.connect();
-		} else if (oldData.settingIndex != this.data.settingIndex) {
-			this.disconnect();
+		if (oldData.roomId != this.data.roomId) {
+			if (oldData.roomId) {
+				this.tempRoomId = null;
+			}
+			this.data.roomId ? this.connect() : this.disconnect();
 		}
 	},
 	connect() {
 		this.disconnect();
 		let data = this.data;
-		let settings = { signalingKey: null, roomId: data.roomId, userAgent: 'default', token: null };
-		if (data.settingIndex >= 0) {
-			settings = Settings.getPeerDevices()[data.settingIndex];
-			if (!settings) {
-				this.el.sceneEl.exitVR();
-				window.open(data.settingUrl, '_blank');
-				return;
-			}
-		}
 		this._updateScreen(null);
 		this._byName('statusMessage').setAttribute('value', 'Connecting...');
-		let roomId = data.roomId || settings.roomId;
-
+		let settings =  Settings.findPeerDevice(data.roomId) || {userAgent: ''};
+		let roomId = this.tempRoomId || data.roomId;
 		if (this.el.components.xywindow) {
-			this.el.setAttribute("xywindow", "title", this._settingName(settings));
+			this.el.setAttribute("xywindow", "title", "RDP:" + this._settingName(settings));
 		}
 
 		// video element
@@ -552,21 +561,27 @@ AFRAME.registerComponent('webrtc-rdp', {
 
 		// connect
 		let player = this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
+		player.authToken = settings.token;
+		player.reconnectWaitMs = 3000 + Math.random() * 5000;
 		if (globalThis.rtcFileSystemManager) {
-			player.authToken = settings.token;
 			// defined in ../app/rtcfilesystem-client.js
-			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + data.settingIndex);
+			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + this.data.settingIndex);
 		}
 		player.onstatechange = (state) => {
 			if (state == 'disconnected') {
+				this._byName('statusMessage').setAttribute('value', 'Disconnected');
 				this._updateScreen(null);
 			}
 		};
 		player.onauth = (ok) => {
 			if (!ok) {
-				this._byName('statusMessage').setAttribute('value', 'Access denied');
 				this.disconnect();
+				this._byName('statusMessage').setAttribute('value', 'Access denied');
 				return;
+			}
+			if (this.tempRoomId == null && this.data.streamId) {
+				this.tempRoomId = ""; // avoid ridirect loop. TODO
+				this.playerConn.sendRpcAsync('play', { streamId: this.data.streamId, redirect: true });
 			}
 			if (player.services && player.services['RDP'] === undefined) {
 				this._byName('statusMessage').setAttribute('value', 'No desktop');
@@ -623,4 +638,18 @@ AFRAME.registerComponent('webrtc-rdp', {
 		this.screenEl.removeAttribute("material"); // to avoid texture leaks.
 		if (this.videoEl) this.videoEl.parentNode.removeChild(this.videoEl);
 	},
+});
+
+AFRAME.registerComponent('webrtc-rdp-app', {
+    schema: {},
+    init() {
+        this.el.addEventListener('app-launch', async (ev) => {
+			if (ev.detail.restoreState) {
+				this.el.setAttribute('webrtc-rdp', ev.detail.restoreState);
+			}
+			this.el.addEventListener('app-save-state', async (ev) => {
+				ev.detail.setState(this.el.getAttribute('webrtc-rdp'));
+			});
+		}, { once: true });
+    }
 });

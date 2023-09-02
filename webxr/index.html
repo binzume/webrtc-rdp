@@ -17,7 +17,7 @@
     <a-assets>
     </a-assets>
 
-    <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingIndex:0" xyresize="" scale='0.2 0.2 0.2' width="8" height="1.2" position="0 1.5 -1.5" xycontainer="direction:column">
+    <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingIndex:0" webrtc-rdp-app xyresize="" scale='0.2 0.2 0.2' width="8" height="1.2" position="0 1.5 -1.5" xycontainer="direction:column">
       <a-video name="screen" tabindex="0" class="collidable nogesture" width="8" height="1.2" src="" material="color:#000"></a-video>
       <a-entity xyrect="height:0">
         <a-xylabel name="statusMessage" width="4" height="0.8" position="0 0.5 0.05" align="center" value="Select Host"></a-xylabel>
@@ -29,6 +29,7 @@
             <a-xybutton name="roomNext" width="0.4" height="0.4" label="&gt;"></a-xybutton>
           </a-xycontainer>
           <a-xycontainer class="control" width="3.0" height="0.4" direction="row" spacing="0.1" justify-items="center">
+            <a-xybutton name="addButton" width="0.5" height="0.4" label="+"></a-xybutton>
             <a-xybutton name="connectButton" width="1.4" height="0.4" label="Connect"></a-xybutton>
             <a-xybutton name="kbdButton" width="0.5" height="0.4" label="KBD"></a-xybutton>
           </a-xycontainer>
