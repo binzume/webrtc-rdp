@@ -360,7 +360,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 				let vrapp = this.el.components.vrapp;
 				let r = await this.playerConn.sendRpcAsync('play', { streamId: stream.id, redirect: vrapp == null });
 				if (r && vrapp) {
-					let app = await vrapp.appManager.launch(vrapp.app.id, null, { disableWindowLocator: true });
+					let app = await vrapp.appManager.start(vrapp.app.id, null, { disableWindowLocator: true });
 					app.object3D.quaternion.copy(this.el.object3D.quaternion);
 					app.setAttribute('position', app.object3D.parent.worldToLocal(position));
 					app.addEventListener('loaded', (_) => {
@@ -643,7 +643,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 AFRAME.registerComponent('webrtc-rdp-app', {
     schema: {},
     init() {
-        this.el.addEventListener('app-launch', async (ev) => {
+        this.el.addEventListener('app-start', async (ev) => {
 			if (ev.detail.restoreState) {
 				this.el.setAttribute('webrtc-rdp', ev.detail.restoreState);
 			}
