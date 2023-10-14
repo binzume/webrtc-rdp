@@ -314,6 +314,8 @@ class PublisherConnection extends BaseConnection {
         this.reconnectWaitMs = 3000;
         this.dataChannels['controlEvent'] = messageHandler || {};
         this.onauth = null;
+        this._originalWidth = 0;
+        this._originalHeight = 0;
     }
     async auth(msg, ch, password, reply = false) {
         let result = false;
@@ -327,6 +329,28 @@ class PublisherConnection extends BaseConnection {
         result && this.onauth?.();
         reply && ch.send(JSON.stringify({ type: 'authResult', result: result }));
         return result;
+    }
+    async updateVideoResolution(preferredWidth) {
+        let video = this.mediaStream.getTracks().find(t => t.kind == 'video');
+        if (video == null) {
+            return false;
+        }
+        if (this._originalWidth <= 0 || this._originalHeight <= 0) {
+            let settings = video.getSettings();
+            this._originalWidth = settings.width;
+            this._originalHeight = settings.height;
+            if (this._originalWidth <= 0 || this._originalHeight <= 0) {
+                return false;
+            }
+        }
+        let scale2 = Math.round(Math.log2(preferredWidth / this._originalWidth));
+        let scale = Math.pow(2, scale2);
+        console.log('video scale: ', scale);
+        await video.applyConstraints({
+            width: this._originalWidth * scale,
+            height: this._originalHeight * scale,
+        });
+        return true;
     }
 }
 
@@ -745,16 +769,17 @@ class ElectronStreamProvider {
             }
             let mediaStream = await this.getMediaStream(s);
             let authorized = cm.disableAuth;
-            return cm.addStream(mediaStream, {
+            let c = cm.addStream(mediaStream, {
                 onmessage: async (ch, ev) => {
                     let msg = JSON.parse(ev.data);
                     if (msg.type == 'auth') {
                         authorized = await cm.auth(msg, ch, true);
                     } else if (authorized) {
-                        this._handleMessage(cm, s, ch, msg)
+                        this._handleMessage(cm, s, ch, msg, c)
                     }
                 }
             }, s.name, true, permanent);
+            return c;
         } catch (e) {
             console.log(e);
             return null;
@@ -764,9 +789,10 @@ class ElectronStreamProvider {
      * @param {ConnectionManager} cm 
      * @param {StreamSpec} s 
      * @param {RTCDataChannel} ch 
+     * @param {ConnectionInfo} c
      * @param {object} msg 
      */
-    async _handleMessage(cm, s, ch, msg) {
+    async _handleMessage(cm, s, ch, msg, c) {
         if (msg.type == 'mouse') {
             let now = Date.now();
             if (now - this._lastMouseMoveTime < 10 && msg.action == 'move') {
@@ -794,6 +820,9 @@ class ElectronStreamProvider {
                 ch.send(JSON.stringify({ type: 'redirect', reqId: msg.reqId, roomId: c?.conn.roomId }));
             }
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: { roomId: c?.conn.roomId } }));
+        } else if (msg.type == 'rpc' && msg.name == 'setResolution') {
+            let r = await c.conn.updateVideoResolution(msg.params.preferredWidth);
+            ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: r }));
         } else {
             console.log("drop:", msg);
         }

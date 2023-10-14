@@ -282,12 +282,12 @@ class PlayerConnection extends BaseConnection {
 AFRAME.registerComponent('webrtc-rdp', {
 	schema: {
 		signalingUrl: { default: "wss://ayame-labo.shiguredo.app/signaling" },
-		settingIndex: { default: -1 },
 		roomId: { default: "" },
 		streamId: { default: "" },
 		maxWidth: { default: 8 },
 		maxHeight: { default: 6 },
 		settingUrl: { default: "/webrtc-rdp/" },
+		adaptiveResolution: { default: true },
 	},
 	/** @type {PlayerConnection} */
 	playerConn: null,
@@ -296,6 +296,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 	width: 0,
 	height: 0,
 	tempRoomId: null,
+	settingIndex: -1,
+	timer: 0,
 	init() {
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");
@@ -365,7 +367,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 					app.setAttribute('position', app.object3D.parent.worldToLocal(position));
 					app.addEventListener('loaded', (_) => {
 						app.components['webrtc-rdp'].tempRoomId = r.roomId;
-						app.setAttribute('webrtc-rdp', { roomId: this.data.roomId, streamId: stream.id, settingIndex: this.data.settingIndex, maxWidth: Math.max(scale.x, 1.5), maxHeight: Math.max(scale.y, 1.5) });
+						app.setAttribute('webrtc-rdp', { roomId: this.data.roomId, streamId: stream.id, maxWidth: Math.max(scale.x, 1.5), maxHeight: Math.max(scale.y, 1.5) });
 						app.components['webrtc-rdp']?.resize(scale.x, scale.y);
 					}, { once: true });
 				}
@@ -474,7 +476,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		screenEl.focus();
 
 		this._byName("connectButton").addEventListener('click', ev => {
-			let settings = Settings.getPeerDevices()[this.data.settingIndex];
+			let settings = Settings.getPeerDevices()[this.settingIndex];
 			if (settings) {
 				this.el.setAttribute('webrtc-rdp', { roomId: settings.roomId });
 			}
@@ -486,12 +488,12 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let selectSettings = (n) => {
 			let d = Settings.getPeerDevices()[n];
 			if (d) {
-				this.el.setAttribute('webrtc-rdp', { roomId: "", settingIndex: n  });
+				this.settingIndex = n;
 				this._byName("roomName").setAttribute('value', this._settingName(d));
 			}
 		};
-		this._byName("roomNext").addEventListener('click', ev => selectSettings(this.data.settingIndex + 1));
-		this._byName("roomPrev").addEventListener('click', ev => selectSettings(this.data.settingIndex - 1));
+		this._byName("roomNext").addEventListener('click', ev => selectSettings(this.settingIndex + 1));
+		this._byName("roomPrev").addEventListener('click', ev => selectSettings(this.settingIndex - 1));
 
 		let showControls = visible => {
 			visible = visible || (this.playerConn == null && this.data.roomId == '');
@@ -528,10 +530,11 @@ AFRAME.registerComponent('webrtc-rdp', {
 	},
 	connect() {
 		this.disconnect();
+
 		let data = this.data;
 		this._updateScreen(null);
 		this._byName('statusMessage').setAttribute('value', 'Connecting...');
-		let settings =  Settings.findPeerDevice(data.roomId) || {userAgent: ''};
+		let settings = Settings.findPeerDevice(data.roomId) || { userAgent: '' };
 		let roomId = this.tempRoomId || data.roomId;
 		if (this.el.components.xywindow) {
 			this.el.setAttribute("xywindow", "title", "RDP:" + this._settingName(settings));
@@ -565,7 +568,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		player.reconnectWaitMs = 3000 + Math.random() * 5000;
 		if (globalThis.rtcFileSystemManager) {
 			// defined in ../app/rtcfilesystem-client.js
-			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + this.data.settingIndex);
+			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + this._settingName(settings, 12));
 		}
 		player.onstatechange = (state) => {
 			if (state == 'disconnected') {
@@ -588,10 +591,33 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 		};
 		player.connect();
+		if (data.adaptiveResolution) {
+			this.timer = setInterval(() => this._checkResolution(), 1000);
+		}
+	},
+	_checkResolution() {
+		let sceneEl = this.el.sceneEl;
+		let renderer = sceneEl?.renderer;
+		if (!sceneEl || !renderer) { return; }
+		let vp = renderer.xr.isPresenting ?
+			renderer.xr.getCamera().cameras[0].viewport:
+			renderer.getViewport(new THREE.Vector4());
+		let vw = this.videoEl.videoWidth;
+		if (vw > 0) {
+			let camera = renderer.xr.isPresenting ? renderer.xr.getCamera() : sceneEl.camera;
+			let w = this.screenEl.getAttribute('width') * 0.2;
+			let d = this.el.object3D.getWorldPosition(new THREE.Vector3()).distanceTo(camera.getWorldPosition(new THREE.Vector3()));
+			let preferredWidth = vp.width * w / d * 0.75; // TODO
+			if (vw * 1.5 < preferredWidth || vw / 1.5 > preferredWidth) {
+				this.playerConn.sendRpcAsync('setResolution', { preferredWidth: preferredWidth });
+			}
+		}
 	},
 	disconnect() {
 		this.playerConn?.dispose();
 		this.playerConn = null;
+		clearTimeout(this.timer);
+		this.timer = 0;
 	},
 	resize(width, height) {
 		console.log("media size: " + width + "x" + height);
@@ -624,7 +650,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 	_byName(name) {
 		return /** @type {import("aframe").Entity} */ (this.el.querySelector("[name=" + name + "]"));
 	},
-	remove: function () {
+	remove() {
 		for (let el of this.el.sceneEl.querySelectorAll('[laser-controls]')) {
 			el.removeEventListener('gripdown', this._ongripdown);
 			el.removeEventListener('gripup', this._ongripup);
@@ -641,9 +667,9 @@ AFRAME.registerComponent('webrtc-rdp', {
 });
 
 AFRAME.registerComponent('webrtc-rdp-app', {
-    schema: {},
-    init() {
-        this.el.addEventListener('app-start', async (ev) => {
+	schema: {},
+	init() {
+		this.el.addEventListener('app-start', async (ev) => {
 			if (ev.detail.restoreState) {
 				this.el.setAttribute('webrtc-rdp', ev.detail.restoreState);
 			}
@@ -651,5 +677,5 @@ AFRAME.registerComponent('webrtc-rdp-app', {
 				ev.detail.setState(this.el.getAttribute('webrtc-rdp'));
 			});
 		}, { once: true });
-    }
+	}
 });
