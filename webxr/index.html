@@ -4,7 +4,7 @@
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <title>WebRTC VR RDP</title>
-  <script id='script-aframe' src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script id='script-aframe' src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script id='script-xylayout' src="https://binzume.github.io/aframe-xylayout/dist/xylayout-all.min.js"></script>
   <script id='script-xyresize' src="https://binzume.github.io/aframe-xylayout/experimental/xyresize.js"></script>
   <script id='ayane-web-sdk' src="https://cdn.jsdelivr.net/npm/@open-ayame/ayame-web-sdk@2020.3.0/dist/ayame.js"></script>
@@ -14,8 +14,6 @@
 
 <body style="background-color: black; color:white;">
   <a-scene cursor="rayOrigin: mouse; fuse:false" raycaster="objects:.collidable" renderer="antialias: true;">
-    <a-assets>
-    </a-assets>
 
     <a-xywindow id="app" title="WebRTC RDP" webrtc-rdp="settingIndex:0" webrtc-rdp-app xyresize="" scale='0.2 0.2 0.2' width="8" height="1.2" position="0 1.5 -1.5" xycontainer="direction:column">
       <a-video name="screen" tabindex="0" class="collidable nogesture" width="8" height="1.2" src="" material="color:#000"></a-video>
@@ -25,7 +23,7 @@
           <a-entity class="collidable" xyitem="fixed:true" geometry="primitive:xy-rounded-rect;width:3.2;height:1.0" position="0 0.05 -0.02" material="color:#444; opacity:0.8"></a-entity>
           <a-xycontainer class="control" width="3.0" height="0.4" direction="row" spacing="0.1" justify-items="center">
             <a-xybutton name="roomPrev" width="0.4" height="0.4" label="&lt;"></a-xybutton>
-            <a-xylabel name="roomName" width="2.0" height="0.4" value="room"></a-xylabel>
+            <a-xylabel name="roomName" width="2.0" height="0.4" value="select host"></a-xylabel>
             <a-xybutton name="roomNext" width="0.4" height="0.4" label="&gt;"></a-xybutton>
           </a-xycontainer>
           <a-xycontainer class="control" width="3.0" height="0.4" direction="row" spacing="0.1" justify-items="center">
