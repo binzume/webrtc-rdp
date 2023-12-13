@@ -32,9 +32,22 @@ class RTCFileSystemClient {
     async write(path, offset, data) {
         return await this._request({ op: 'write', path: path, p: offset, b: data });
     }
+    /** @returns {Promise<number>} */
+    async writeBytes(path, offset, data) {
+        let b64 = btoa(String.fromCharCode(...data));
+        return await this._request({ op: 'write', path: path, p: offset, b: b64 });
+    }
+    /** @returns {Promise<boolean>} */
+    async truncate(path, pos) {
+        return await this._request({ op: 'truncate', path: path, p: pos });
+    }
     /** @returns {Promise<boolean>} */
     async remove(path) {
         return await this._request({ op: 'remove', path: path });
+    }
+    /** @returns {Promise<boolean>} */
+    async mkdir(path) {
+        return await this._request({ op: 'mkdir', path: path });
     }
 
     readStream(path, pos, end) {
@@ -64,6 +77,30 @@ class RTCFileSystemClient {
                 if (queue.length == 0) {
                     controller.close();
                 }
+            }
+        });
+    }
+
+    writeStream(path, options = {}) {
+        const blockSize = 32768 / 4 * 3; // BASE64
+        let pos = options.start || 0;
+        return new WritableStream({
+            start: async (_controller) => {
+                if (!options.keepExistingData) {
+                    this.truncate(path, 0);
+                }
+            },
+            write: async (/** @type {Uint8Array&{type: string, [key:string]:any}} */ chunk, _controller) => {
+                if (chunk.type == 'seek') {
+                    pos = chunk.position;
+                    return;
+                }
+                let l = chunk.byteLength;
+                for (let p = 0; p < l; p += blockSize) {
+                    // TODO: prevent memcopy
+                    await this.writeBytes(path, pos + p, chunk.slice(p, p + blockSize));
+                }
+                pos += l;
             }
         });
     }
@@ -161,26 +198,7 @@ class RTCFileSystemClientFolder {
         await client.wait();
         signal?.throwIfAborted();
         let files = await client.files(this.path, offset, limit, filesopt);
-        let dir = this.path != '' ? this.path + '/' : '';
-        let items = files.map(f => ({
-            name: f.name,
-            type: f.type == 'directory' ? 'folder' : f.type,
-            size: f.size,
-            updatedTime: f.updatedTime,
-            tags: f.metadata?.tags || [],
-            path: this._pathPrefix + dir + f.name,
-            async fetch(start = 0, end = -1) {
-                return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type, 'Content-Length': '' + f.size } });
-            },
-            update(blob) { return client.write(dir + f.name, 0, blob); },
-            remove() { return client.remove(dir + f.name); },
-            thumbnail: f.metadata?.thumbnail ? {
-                type: 'image/jpeg',
-                async fetch(start = 0, end = -1) {
-                    return new Response(client.readStream(dir + f.name + f.metadata?.thumbnail, start, end < 0 ? 32768 : end), { headers: { 'Content-Type': 'image/jpeg' } });
-                }
-            } : null,
-        }));
+        let items = files.map(f => this._procFile(f));
         let sz = offset + items.length + (items.length >= limit ? 1 : 0);
         if (sz > this.size) {
             this.size = sz;
@@ -190,6 +208,36 @@ class RTCFileSystemClientFolder {
             items: items,
             next: items.length >= limit ? offset + limit : null,
         };
+    }
+    async writeFile(name, blob, options = {}) {
+        let path = (this.path != '' ? this.path + '/' : '') + name;
+        await blob.stream().pipeTo(this._client.writeStream(path));
+    }
+    _procFile(f) {
+        let client = this._client;
+        let dir = this.path != '' ? this.path + '/' : '';
+        return ({
+            name: f.name,
+            type: f.type == 'directory' ? 'folder' : f.type,
+            size: f.size,
+            lastModified: f.updatedTime,
+            updatedTime: f.updatedTime,
+            tags: f.metadata?.tags || [],
+            path: this._pathPrefix + dir + f.name,
+            stream(start = 0, end = -1) { return client.readStream(dir + f.name, start, end < 0 ? f.size : end); },
+            async createWritable(options = {}) { return client.writeStream(dir + f.name, options); },
+            async fetch(start = 0, end = -1) {
+                return new Response(client.readStream(dir + f.name, start, end < 0 ? f.size : end), { headers: { 'Content-Type': f.type, 'Content-Length': '' + f.size } });
+            },
+            update(blob) { return blob.stream().pipeTo(client.writeStream(dir + f.name)); },
+            remove() { return client.remove(dir + f.name); },
+            thumbnail: f.metadata?.thumbnail ? {
+                type: 'image/jpeg',
+                async fetch(start = 0, end = -1) {
+                    return new Response(client.readStream(dir + f.name + f.metadata?.thumbnail, start, end < 0 ? 32768 : end), { headers: { 'Content-Type': 'image/jpeg' } });
+                }
+            } : null,
+        });
     }
 
     /**
