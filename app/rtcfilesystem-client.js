@@ -302,16 +302,17 @@ class RTCFileSystemManager {
             onmessage: (_ch, ev) => this._clients[id].handleEvent(ev)
         };
     }
-    static _registered;
+    static _registered = {};
     registerAll(connectionFactory) {
-        if (RTCFileSystemManager._registered) {
-            return;
-        }
-        RTCFileSystemManager._registered = true;
         const roomIdPrefix = 'binzume@rdp-room-';
         globalThis.storageAccessors ||= {};
         function add(roomId, signalingKey, password, name) {
+            if (RTCFileSystemManager._registered[roomId]) {
+                return;
+            }
+            RTCFileSystemManager._registered[roomId] = true;
             let client = new RTCFileSystemClient();
+            /** @type {PlayerConnection|null} */
             let player = null;
             let id = roomId.startsWith(roomIdPrefix) ? roomId.substring(roomIdPrefix.length) : roomId;
             globalThis.storageAccessors[id] = {

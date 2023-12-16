@@ -301,6 +301,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		maxWidth: { default: 8 },
 		maxHeight: { default: 6 },
 		settingUrl: { default: "/webrtc-rdp/" },
+		filesystem: { default: 'all', oneOf: ['none', 'connected', 'all'] },
 		adaptiveResolution: { default: true },
 	},
 	/** @type {PlayerConnection} */
@@ -309,13 +310,15 @@ AFRAME.registerComponent('webrtc-rdp', {
 	videoEl: null,
 	width: 0,
 	height: 0,
+	/** @type {string|null} */
 	tempRoomId: null,
 	settingIndex: -1,
 	timer: 0,
 	init() {
-		//if (globalThis.rtcFileSystemManager) {
-		//	globalThis.rtcFileSystemManager.registerAll((key, id) => new PlayerConnection(this.data.signalingUrl, key, id, null));
-		//}
+		if (this.data.filesystem == 'all') {
+			// defined in ../app/rtcfilesystem-client.js
+			globalThis.rtcFileSystemManager?.registerAll((key, id) => new PlayerConnection(this.data.signalingUrl, key, id, null));
+		}
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");
 
@@ -583,7 +586,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let player = this.playerConn = new PlayerConnection(data.signalingUrl, settings.signalingKey, roomId, videoEl);
 		player.authToken = settings.token;
 		player.reconnectWaitMs = 3000 + Math.random() * 5000;
-		if (globalThis.rtcFileSystemManager) {
+		if (this.data.filesystem == 'connected' && globalThis.rtcFileSystemManager) {
 			// defined in ../app/rtcfilesystem-client.js
 			player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + settings.roomId, 'RDP-' + this._settingName(settings, 12));
 		}
