@@ -73,14 +73,14 @@ class Settings {
 class BaseConnection {
 	/**
 	 * @param {string} signalingUrl 
-	 * @param {string|null} signalingKey 
+	 * @param {string|undefined} signalingKey 
 	 * @param {string} roomId 
 	 */
 	constructor(signalingUrl, signalingKey, roomId) {
 		this.signalingUrl = signalingUrl;
 		this.roomId = roomId;
 		this.conn = null;
-		/** @type {MediaStream} */
+		/** @type {MediaStream|null} */
 		this.mediaStream = null;
 		this.stopTracksOnDisposed = true;
 		/** @type {Record<string, DataChannelInfo>} */
@@ -104,6 +104,7 @@ class BaseConnection {
 	setupConnection() {
 		console.log("connecting..." + this.signalingUrl + " " + this.roomId);
 		this.updateState('connecting');
+		clearTimeout(this._connectTimer);
 		if (this.connectTimeoutMs > 0) {
 			this._connectTimer = setTimeout(() => this.disconnect(), this.connectTimeoutMs);
 		}
@@ -111,7 +112,7 @@ class BaseConnection {
 		let conn = this.conn = Ayame.connection(this.signalingUrl, this.roomId, this.options, false);
 		conn.on('open', async (e) => {
 			for (let c of Object.keys(this.dataChannels)) {
-				this.handleDataChannel(await conn.createDataChannel(c));
+				this._handleDataChannel(await conn.createDataChannel(c));
 			}
 			this.updateState('waiting');
 		});
@@ -120,7 +121,7 @@ class BaseConnection {
 			this.updateState('connected');
 		});
 		conn.on('datachannel', (channel) => {
-			this.handleDataChannel(channel);
+			this._handleDataChannel(channel);
 		});
 		conn.on('disconnect', (e) => {
 			this.conn = null;
@@ -140,13 +141,13 @@ class BaseConnection {
 			this.conn.stream = null;
 			this.conn = null;
 		}
-		if (reason != 'dispose' && reason != 'noretry' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
-			setTimeout(() => this.connect(), this.reconnectWaitMs);
+		if (reason != 'dispose' && this.state != 'disconnected' && this.reconnectWaitMs >= 0) {
+			this._connectTimer = setTimeout(() => this.connect(), this.reconnectWaitMs);
 		}
 		for (let c of Object.values(this.dataChannels)) {
 			c.ch = null;
 		}
-		this.updateState('disconnected');
+		this.updateState('disconnected', reason);
 	}
 	dispose() {
 		this.disconnect('dispose');
@@ -156,54 +157,57 @@ class BaseConnection {
 	}
 	/**
 	 * @param {'disconnected' | 'connecting' | 'waiting' | 'disposed' | 'connected'} s
+	 * @param {string|null} reason 
 	 */
-	updateState(s) {
+	updateState(s, reason = null) {
 		if (s != this.state && this.state != 'disposed') {
 			console.log(this.roomId, s);
 			let oldState = this.state;
 			this.state = s;
-			this.onstatechange && this.onstatechange(s, oldState);
+			this.onstatechange && this.onstatechange(s, oldState, reason);
 		}
 	}
 	/**
-	 * @param {RTCDataChannel} ch
+	 * @param {RTCDataChannel|null} ch
 	 */
-	handleDataChannel(ch) {
+	_handleDataChannel(ch) {
 		if (!ch) return;
 		let c = this.dataChannels[ch.label];
 		if (c && !c.ch) {
 			console.log('datachannel', ch.label);
 			c.ch = ch;
-			ch.onmessage = c.onmessage?.bind(ch, ch);
+			ch.onmessage = (ev) => c.onmessage?.(ch, ev);
 			// NOTE: dataChannel.onclose = null in Ayame web sdk.
-			c.onopen && ch.addEventListener('open', c.onopen.bind(c, ch));
-			c.onclose && ch.addEventListener('close', c.onclose.bind(c, ch));
+			ch.addEventListener('open', (ev) => c.onopen?.(ch, ev));
+			ch.addEventListener('close', (ev) => c.onclose?.(ch, ev));
 		}
 	}
 	getFingerprint(remote = false) {
-        let pc = this.conn._pc;
-        let m = pc && (remote ? pc.currentRemoteDescription : pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
-        return m && m[1];
-    }
-    async hmacSha256(password, fingerprint) {
-        let enc = new TextEncoder();
-        let key = await crypto.subtle.importKey('raw', enc.encode(password),
-            { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
-        let sign = await crypto.subtle.sign('HMAC', key, enc.encode(fingerprint));
-        return btoa(String.fromCharCode(...new Uint8Array(sign)));
-    }
+		let pc = this.conn._pc;
+		let m = pc && (remote ? pc.currentRemoteDescription : pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+		return m && m[1];
+	}
+	async hmacSha256(password, fingerprint) {
+		let enc = new TextEncoder();
+		let key = await crypto.subtle.importKey('raw', enc.encode(password),
+			{ name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+		let sign = await crypto.subtle.sign('HMAC', key, enc.encode(fingerprint));
+		return btoa(String.fromCharCode(...new Uint8Array(sign)));
+	}
 }
 
 class PlayerConnection extends BaseConnection {
 	/**
 	 * @param {string} signalingUrl 
 	 * @param {string} roomId 
-	 * @param {HTMLVideoElement} videoEl 
+	 * @param {HTMLVideoElement|null} videoEl
 	 */
 	constructor(signalingUrl, signalingKey, roomId, videoEl) {
 		super(signalingUrl, signalingKey, roomId);
-		this.options.video.direction = 'recvonly';
-		this.options.audio.direction = 'recvonly';
+		if (videoEl) {
+			this.options.video.direction = 'recvonly';
+			this.options.audio.direction = 'recvonly';
+		}
 		this.videoEl = videoEl;
 		this._rpcResultHandler = {};
 		this.authToken = null;
@@ -211,21 +215,28 @@ class PlayerConnection extends BaseConnection {
 		this.onauth = null;
 		this.dataChannels['controlEvent'] = {
 			onopen: async (ch, ev) => {
-                let localFingerprint = this.getFingerprint(false);
-                if (localFingerprint && window.crypto?.subtle) {
-                    ch.send(JSON.stringify({
-                        type: "auth",
-                        fingerprint: localFingerprint,
-                        hmac: await this.hmacSha256(this.authToken, localFingerprint)
-                    }));
-                } else {
-                    ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
-                }
+				if (window.crypto?.subtle) {
+					let localFingerprint = this.getFingerprint(false);
+					if (!localFingerprint) {
+						console.log("Failed to get DTLS cert fingerprint");
+						return;
+					}
+					console.log("local fingerprint:", localFingerprint);
+					let hmac = this.authToken && await this.hmacSha256(this.authToken, localFingerprint);
+					ch.send(JSON.stringify({
+						type: "auth",
+						requestServices: videoEl ? ['screen', 'file'] : ['file'],
+						fingerprint: localFingerprint,
+						hmac: hmac
+					}));
+				} else {
+					ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+				}
 			},
 			onmessage: (ch, ev) => {
 				let msg = JSON.parse(ev.data);
 				if (msg.type == 'redirect' && msg.roomId) {
-					this.disconnect();
+					this.disconnect('redirect');
 					this.roomId = msg.roomId;
 					this.connect();
 				} else if (msg.type == 'auth') {
@@ -244,7 +255,9 @@ class PlayerConnection extends BaseConnection {
 		let conn = super.setupConnection();
 		conn.on('addstream', (ev) => {
 			this.mediaStream = ev.stream;
-			this.videoEl.srcObject = ev.stream;
+			if (this.videoEl) {
+				this.videoEl.srcObject = ev.stream;
+			}
 		});
 		return conn;
 	}
@@ -252,7 +265,7 @@ class PlayerConnection extends BaseConnection {
 	 * @param {string|null} reason 
 	 */
 	disconnect(reason = null) {
-		if (this.videoEl.srcObject == this.mediaStream) {
+		if (this.videoEl && this.videoEl.srcObject == this.mediaStream) {
 			this.videoEl.srcObject = null;
 		}
 		super.disconnect(reason);
@@ -300,6 +313,9 @@ AFRAME.registerComponent('webrtc-rdp', {
 	settingIndex: -1,
 	timer: 0,
 	init() {
+		//if (globalThis.rtcFileSystemManager) {
+		//	globalThis.rtcFileSystemManager.registerAll((key, id) => new PlayerConnection(this.data.signalingUrl, key, id, null));
+		//}
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");
 
@@ -601,7 +617,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let renderer = sceneEl?.renderer;
 		if (!sceneEl || !renderer) { return; }
 		let vp = renderer.xr.isPresenting ?
-			renderer.xr.getCamera().cameras[0].viewport:
+			renderer.xr.getCamera().cameras[0].viewport :
 			renderer.getViewport(new THREE.Vector4());
 		let vw = this.videoEl.videoWidth;
 		if (vw > 0) {

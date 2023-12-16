@@ -302,6 +302,58 @@ class RTCFileSystemManager {
             onmessage: (_ch, ev) => this._clients[id].handleEvent(ev)
         };
     }
+    static _registered;
+    registerAll(connectionFactory) {
+        if (RTCFileSystemManager._registered) {
+            return;
+        }
+        RTCFileSystemManager._registered = true;
+        const roomIdPrefix = 'binzume@rdp-room-';
+        globalThis.storageAccessors ||= {};
+        function add(roomId, signalingKey, password, name) {
+            let client = new RTCFileSystemClient();
+            let player = null;
+            let id = roomId.startsWith(roomIdPrefix) ? roomId.substring(roomIdPrefix.length) : roomId;
+            globalThis.storageAccessors[id] = {
+                name: name,
+                detach: () => player && player.dispose(),
+                getFolder(path, prefix) {
+                    if (player == null) {
+                        player = connectionFactory(signalingKey, roomId);
+                        player.authToken = password;
+                        player.dataChannels['fileServer'] = {
+                            onopen: (ch, _ev) => client.addSocket(ch, false),
+                            onclose: (ch, _ev) => client.removeSocket(ch),
+                            onmessage: (_ch, ev) => client.handleEvent(ev),
+                        };
+                        player.onauth = (ok) => {
+                            if (!ok) {
+                                player.disconnect();
+                                return;
+                            }
+                            client.setAvailable(true);
+                        };
+                        player.onstatechange = (state, oldState, reason) => {
+                            if (state == 'disconnected' && reason != 'redirect') {
+                                player = null;
+                            }
+                        };
+                        player.connect();
+                    }
+                    return new RTCFileSystemClientFolder(client, path, prefix);
+                },
+                parsePath: (path) => path ? path.split('/').map(p => [p]) : [],
+            };
+        }
+
+        // see https://github.com/binzume/webrtc-rdp
+        let config = JSON.parse(localStorage.getItem('webrtc-rdp-settings') || 'null') || { devices: [] };
+        let devices = config.devices != null ? config.devices : [config];
+        for (let device of devices) {
+            let name = (device.name || device.userAgent || device.roomId).substring(0, 64);
+            add(device.roomId, device.signalingKey, device.token, name);
+        }
+    }
 }
 
 // Install storage accessor for WebXR client storage.
