@@ -46,6 +46,10 @@ class RTCFileSystemClient {
         return await this._request({ op: 'remove', path: path });
     }
     /** @returns {Promise<boolean>} */
+    async rename(path, path2) {
+        return await this._request({ op: 'rename', path: path, path2: path2 });
+    }
+    /** @returns {Promise<boolean>} */
     async mkdir(path) {
         return await this._request({ op: 'mkdir', path: path });
     }
@@ -209,6 +213,9 @@ class RTCFileSystemClientFolder {
             next: items.length >= limit ? offset + limit : null,
         };
     }
+    mkdir(name, options = {}) {
+        return this._client.mkdir((this.path != '' ? this.path + '/' : '') + name);
+    }
     async writeFile(name, blob, options = {}) {
         let path = (this.path != '' ? this.path + '/' : '') + name;
         await blob.stream().pipeTo(this._client.writeStream(path));
@@ -231,6 +238,7 @@ class RTCFileSystemClientFolder {
             },
             update(blob) { return blob.stream().pipeTo(client.writeStream(dir + f.name)); },
             remove() { return client.remove(dir + f.name); },
+            rename(name) { return client.rename(dir + f.name, dir + name); },
             thumbnail: f.metadata?.thumbnail ? {
                 type: 'image/jpeg',
                 async fetch(start = 0, end = -1) {

@@ -110,9 +110,32 @@ class FileSystemWrapper {
         await writer.close();
         return true;
     }
+    async mkdir(path) {
+        if (!this.writable) { throw 'readonly'; }
+        let handle = await this.resolvePath(path, 'directory');
+        return handle != null;
+    }
     async remove(path) {
         if (!this.writable) { throw 'readonly'; }
-        // TODO
+        let dir = '', name = path;
+        let p = path.lastIndexOf('/');
+        if (p > 0) {
+            dir = path.substring(0, p);
+            name = path.substring(p + 1);
+        }
+        let hdir = await this.resolvePath(dir);
+        await hdir.removeEntry(name);
+        return true;
+    }
+    async rename(path, path2) {
+        if (!this.writable) { throw 'readonly'; }
+        let handle = await this.resolvePath(path, 'file');
+        // @ts-ignore
+        if (handle && handle.move) {
+            // @ts-ignore
+            await handle.move(path2);
+            return true;
+        }
         return false;
     }
 
@@ -120,14 +143,14 @@ class FileSystemWrapper {
      * @param {string} path
      * @return {Promise<FileSystemHandle2>}
      */
-    async resolvePath(path, kind = null) {
+    async resolvePath(path, kind = null, create = false) {
         let p = path.split('/');
         let h = this.handle;
         let wrap = async (/** @type {Promise<FileSystemHandle2>} */ t) => { try { return await t; } catch { } };
         for (let i = 0; i < p.length; i++) {
             if (p[i] == '' || p[i] == '.') { continue; }
-            let c = await ((i == p.length - 1 && kind == 'file') ? wrap(h.getFileHandle(p[i])) : wrap(h.getDirectoryHandle(p[i])));
-            if (!c && kind == null) { c = await wrap(h.getFileHandle(p[i])); }
+            let c = await ((i == p.length - 1 && kind == 'file') ? wrap(h.getFileHandle(p[i], { create })) : wrap(h.getDirectoryHandle(p[i], { create })));
+            if (!c && kind == null) { c = await wrap(h.getFileHandle(p[i], { create })); }
             if (!c) throw 'noent';
             h = c;
         }
@@ -246,11 +269,16 @@ class FileServer {
                     socket.send(JSON.stringify({ rid: cmd.rid, data: l }));
                     break;
                 case 'truncate':
-                    let r = await fs.truncate(cmd.path, cmd.p);
-                    socket.send(JSON.stringify({ rid: cmd.rid, data: r }));
+                    socket.send(JSON.stringify({ rid: cmd.rid, data: await fs.truncate(cmd.path, cmd.p) }));
+                    break;
+                case 'mkdir':
+                    socket.send(JSON.stringify({ rid: cmd.rid, data: await fs.mkdir(cmd.path) }));
                     break;
                 case 'remove':
                     socket.send(JSON.stringify({ rid: cmd.rid, data: await fs.remove(cmd.path) }));
+                    break;
+                case 'rename':
+                    socket.send(JSON.stringify({ rid: cmd.rid, data: await fs.rename(cmd.path, cmd.path2) }));
                     break;
                 default:
                     throw 'unknown_operation';

@@ -180,6 +180,18 @@ class BaseConnection {
 			c.onclose && ch.addEventListener('close', c.onclose.bind(c, ch));
 		}
 	}
+	getFingerprint(remote = false) {
+        let pc = this.conn._pc;
+        let m = pc && (remote ? pc.currentRemoteDescription : pc.currentLocalDescription).sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
+        return m && m[1];
+    }
+    async hmacSha256(password, fingerprint) {
+        let enc = new TextEncoder();
+        let key = await crypto.subtle.importKey('raw', enc.encode(password),
+            { name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
+        let sign = await crypto.subtle.sign('HMAC', key, enc.encode(fingerprint));
+        return btoa(String.fromCharCode(...new Uint8Array(sign)));
+    }
 }
 
 class PlayerConnection extends BaseConnection {
@@ -199,27 +211,16 @@ class PlayerConnection extends BaseConnection {
 		this.onauth = null;
 		this.dataChannels['controlEvent'] = {
 			onopen: async (ch, ev) => {
-				if (this.authToken && this.conn._pc && window.crypto?.subtle) {
-					// use HMAC
-					let m = this.conn._pc.currentLocalDescription.sdp.match(/a=fingerprint:\s*([\w-]+ [a-f0-9:]+)/i);
-					if (!m) {
-						console.log("Failed to get DTLS cert fingerprint");
-						return;
-					}
-					let localFingerprint = m[1];
-					console.log("local fingerprint:", localFingerprint);
-					let enc = new TextEncoder();
-					let key = await crypto.subtle.importKey('raw', enc.encode(this.authToken),
-						{ name: 'HMAC', hash: { name: 'SHA-256' } }, false, ['sign']);
-					let sign = await crypto.subtle.sign('HMAC', key, enc.encode(localFingerprint));
-					this.authToken && ch.send(JSON.stringify({
-						type: "auth",
-						fingerprint: localFingerprint,
-						hmac: btoa(String.fromCharCode(...new Uint8Array(sign)))
-					}));
-				} else {
-					this.authToken && ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
-				}
+                let localFingerprint = this.getFingerprint(false);
+                if (localFingerprint && window.crypto?.subtle) {
+                    ch.send(JSON.stringify({
+                        type: "auth",
+                        fingerprint: localFingerprint,
+                        hmac: await this.hmacSha256(this.authToken, localFingerprint)
+                    }));
+                } else {
+                    ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
+                }
 			},
 			onmessage: (ch, ev) => {
 				let msg = JSON.parse(ev.data);
