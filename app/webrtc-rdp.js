@@ -358,23 +358,34 @@ class PlayerConnection extends BaseConnection {
     /**
      * @param {string} signalingUrl 
      * @param {string} roomId 
-     * @param {HTMLVideoElement} videoEl 
+     * @param {HTMLVideoElement|null} videoEl
      */
     constructor(signalingUrl, signalingKey, roomId, videoEl) {
         super(signalingUrl, signalingKey, roomId);
-        this.options.video.direction = 'recvonly';
-        this.options.audio.direction = 'recvonly';
+        if (videoEl) {
+            this.options.video.direction = 'recvonly';
+            this.options.audio.direction = 'recvonly';
+        }
         this.videoEl = videoEl;
         this._rpcResultHandler = {};
         this.authToken = null;
+        this.services = null;
+        this.onauth = null;
         this.dataChannels['controlEvent'] = {
             onopen: async (ch, ev) => {
-                let localFingerprint = this.getFingerprint(false);
-                if (localFingerprint && window.crypto?.subtle) {
+                if (window.crypto?.subtle) {
+                    let localFingerprint = this.getFingerprint(false);
+                    if (!localFingerprint) {
+                        console.log("Failed to get DTLS cert fingerprint");
+                        return;
+                    }
+                    console.log("local fingerprint:", localFingerprint);
+                    let hmac = this.authToken && await this.hmacSha256(this.authToken, localFingerprint);
                     ch.send(JSON.stringify({
                         type: "auth",
+                        requestServices: videoEl ? ['screen', 'file'] : ['file'],
                         fingerprint: localFingerprint,
-                        hmac: await this.hmacSha256(this.authToken, localFingerprint)
+                        hmac: hmac
                     }));
                 } else {
                     ch.send(JSON.stringify({ type: "auth", token: this.authToken }));
@@ -386,6 +397,12 @@ class PlayerConnection extends BaseConnection {
                     this.disconnect('redirect');
                     this.roomId = msg.roomId;
                     this.connect();
+                } else if (msg.type == 'auth') {
+                    // player and player error
+                    this.disconnect();
+                } else if (msg.type == 'authResult') {
+                    this.services = msg.services;
+                    this.onauth?.(msg.result);
                 } else if (msg.type == 'rpcResult') {
                     this._rpcResultHandler[msg.reqId]?.(msg);
                 }
@@ -396,12 +413,17 @@ class PlayerConnection extends BaseConnection {
         let conn = super.setupConnection();
         conn.on('addstream', (ev) => {
             this.mediaStream = ev.stream;
-            this.videoEl.srcObject = ev.stream;
+            if (this.videoEl) {
+                this.videoEl.srcObject = ev.stream;
+            }
         });
         return conn;
     }
+    /**
+     * @param {string|null} reason 
+     */
     disconnect(reason = null) {
-        if (this.videoEl.srcObject == this.mediaStream) {
+        if (this.videoEl && this.videoEl.srcObject == this.mediaStream) {
             this.videoEl.srcObject = null;
         }
         super.disconnect(reason);
@@ -867,10 +889,11 @@ function initPairing() {
 
 window.addEventListener('DOMContentLoaded', (ev) => {
     /**
-     * @param {string} tag 
+     * @template {keyof HTMLElementTagNameMap} T
+     * @param {T} tag 
      * @param {string[] | string | Node[] | any} children 
-     * @param {object | function} attrs
-     * @returns {HTMLElement}
+     * @param {object | function} [attrs]
+     * @returns {HTMLElementTagNameMap[T]}
      */
     let mkEl = (tag, children, attrs) => {
         let el = document.createElement(tag);
@@ -915,6 +938,11 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                             'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
                             mkEl('button', 'x', { onclick: (_) => { fileServer.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); }, title: 'Stop sharing' })
                         ]);
+                        // Read only on Electron. https://github.com/electron/electron/issues/28422
+                        if (!isElectronApp && listEl.childElementCount == 0) {
+                            let checkEl = mkEl('input', [], { type: 'checkbox', onchange: async (_) => checkEl.checked = await fileServer.fs.setWritable(checkEl.checked), title: 'Make files writable' });
+                            listEl.append(mkEl('li', [mkEl('label', [checkEl, 'Writable']),]));
+                        }
                         listEl.append(el);
                     }
                 })();

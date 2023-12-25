@@ -95,16 +95,16 @@ class FileSystemWrapper {
     }
     async write(path, offset = 0, data) {
         if (!this.writable) { throw 'readonly'; }
-        let handle = await this.resolvePath(path, 'file');
+        let handle = await this.resolvePath(path, 'file', true);
         let writer = await handle.createWritable({ keepExistingData: true });
         await writer.seek(offset);
-        await writer.write(offset, data);
+        await writer.write(data);
         await writer.close();
         return data.length;
     }
     async truncate(path, size = 0) {
         if (!this.writable) { throw 'readonly'; }
-        let handle = await this.resolvePath(path, 'file');
+        let handle = await this.resolvePath(path, 'file', true);
         let writer = await handle.createWritable({ keepExistingData: true });
         writer.truncate(size);
         await writer.close();
@@ -112,7 +112,7 @@ class FileSystemWrapper {
     }
     async mkdir(path) {
         if (!this.writable) { throw 'readonly'; }
-        let handle = await this.resolvePath(path, 'directory');
+        let handle = await this.resolvePath(path, 'directory', true);
         return handle != null;
     }
     async remove(path) {
