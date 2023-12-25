@@ -317,7 +317,8 @@ AFRAME.registerComponent('webrtc-rdp', {
 	init() {
 		if (this.data.filesystem == 'all') {
 			// defined in ../app/rtcfilesystem-client.js
-			globalThis.rtcFileSystemManager?.registerAll((key, id) => new PlayerConnection(this.data.signalingUrl, key, id, null));
+			const roomIdPrefix = 'binzume@rdp-room-';
+			globalThis.rtcFileSystemManager?.registerAll((key, id) => new PlayerConnection(this.data.signalingUrl, key, id, null), roomIdPrefix);
 		}
 		// @ts-ignore
 		let screenEl = this.screenEl = this._byName("screen");

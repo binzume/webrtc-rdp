@@ -303,8 +303,7 @@ class RTCFileSystemManager {
         };
     }
     static _registered = {};
-    registerAll(connectionFactory) {
-        const roomIdPrefix = 'binzume@rdp-room-';
+    registerAll(connectionFactory, roomIdPrefix = '') {
         globalThis.storageAccessors ||= {};
         function add(roomId, signalingKey, password, name) {
             if (RTCFileSystemManager._registered[roomId]) {
