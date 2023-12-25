@@ -938,8 +938,7 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                             'File: ', mkEl('span', handle.name, { className: 'streamName', title: handle.kind }),
                             mkEl('button', 'x', { onclick: (_) => { fileServer.fs.handle.removeEntry(handle.name); el.parentElement.removeChild(el); }, title: 'Stop sharing' })
                         ]);
-                        // Read only on Electron. https://github.com/electron/electron/issues/28422
-                        if (!isElectronApp && listEl.childElementCount == 0) {
+                        if (listEl.childElementCount == 0) {
                             let checkEl = mkEl('input', [], { type: 'checkbox', onchange: async (_) => checkEl.checked = await fileServer.fs.setWritable(checkEl.checked), title: 'Make files writable' });
                             listEl.append(mkEl('li', [mkEl('label', [checkEl, 'Writable']),]));
                         }

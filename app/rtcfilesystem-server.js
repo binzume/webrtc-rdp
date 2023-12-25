@@ -106,7 +106,7 @@ class FileSystemWrapper {
         if (!this.writable) { throw 'readonly'; }
         let handle = await this.resolvePath(path, 'file', true);
         let writer = await handle.createWritable({ keepExistingData: true });
-        writer.truncate(size);
+        await writer.truncate(size);
         await writer.close();
         return true;
     }

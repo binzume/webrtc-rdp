@@ -3,6 +3,9 @@ const { app, ipcMain, BrowserWindow, Tray, Menu, desktopCapturer, screen, system
 const path = require('path');
 const karakuri = require('karakurijs');
 
+// https://github.com/electron/electron/issues/28422
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+
 class InputManager {
   constructor() {
     /** @type {Record<string, Electron.Display>} */
