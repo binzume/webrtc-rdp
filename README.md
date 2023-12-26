@@ -1,6 +1,6 @@
 # WebRTC + WebXR Remote Desktop
 
-WebRTCとWebXRを使ったブラウザ上で動作するリモートデスクトップです．
+WebRTCを使ったブラウザ上で動作するリモートデスクトップです．WebXRを利用することでVR/AR空間内にデスクトップを表示することができます。
 
 ![Screenshot](screenshot-xr.png)
 
@@ -11,22 +11,22 @@ Demo URL:
 - https://binzume.github.io/webrtc-rdp/ (Web)
 - https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp (WebXR)
 
-## Usage
-
-1. ブラウザで https://binzume.github.io/webrtc-rdp/ にアクセスするか，または下記のアプリを起動してください
-2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください (初回のみ)
-3. 「Share Desktop」または「Share Camera」ボタンで共有したいストリームを選択してください (ブラウザ版のみ)
-4. 「Open Remote Desktop」ボタンをクリックすると，相手側のデスクトップに接続します．複数のストリームがある場合は選択画面が表示されます
-
-- [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードでPCのデスクトップに接続できます (Oculus Quest用)
-- 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
-
 
 | Features  | Web         | WebXR | Electron App |
 |-----------|-------------|-------|--------------|
 | Screen    | send/recv   | recv  | send/recv    |
 | Mouse/Kbd | send/(recv) | send  | send/recv    |
 | File      | send/(recv) | recv  | send         |
+
+## Usage
+
+1. ブラウザで https://binzume.github.io/webrtc-rdp/ にアクセスするか，または下記のアプリを起動してください
+2. 接続したいブラウザ間でペアリングします．片方のブラウザでPINを生成し，もう一方のブラウザでそのPINを入力してください (初回のみ)
+3. 「Share Desktop」または「Share Camera」ボタンで共有したいストリームを選択してください (ブラウザ版のみ)
+4. 「Open Remote Desktop」リンクをクリックすると，相手側のデスクトップに接続します．複数のストリームがある場合は選択画面が表示されます
+
+- [WebXR](https://binzume.github.io/vr-workspace/#app:app-webrtc-rdp) リンクから VR モードでPCのデスクトップに接続できます (Oculus Quest用)
+- 最低限の動作確認のためのデモなので，本格利用する場合は色々いじってください．
 
 ### Mouse/Keyboard
 
@@ -88,6 +88,7 @@ Oculus Touchコントローラーのボタン割当:
 - デモの実装ではAyame Laboを使って接続します．セキュアな接続が必要な場合は自分の環境でAyameを起動して使ってください．
 - 接続にAyame Laboを使っている場合，何らかの理由でRoomIdが漏れると他者が接続できる可能性があるので，接続を待機した状態で放置しないでください．
 - RoomIdはPINの交換時にランダムな文字列から生成して共有します．
+- ファイルの送受信は、ペアリング時に共有したtokenと接続時のDTLSのfingerprintを使って認証するので少しセキュアです(気休め程度)
 
 ## TODO
 
