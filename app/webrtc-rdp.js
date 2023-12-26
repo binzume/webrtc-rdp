@@ -887,7 +887,96 @@ function initPairing() {
     });
 }
 
-window.addEventListener('DOMContentLoaded', (ev) => {
+function initPlayer() {
+    // Player
+    /** @type {PlayerConnection|null} */
+    let player = null;
+    /** @type {HTMLVideoElement} */
+    let videoEl = document.querySelector('#screen');
+    /** @type {DeviceSettings} */
+    let currentDevice = null;
+    let playStream = (/** @type {DeviceSettings} */ d) => {
+        currentDevice = d;
+        player?.disconnect();
+        videoEl.style.display = "none";
+        if (currentDevice) {
+            document.getElementById('connectingBox').style.display = "block";
+            document.body.classList.add('player');
+            let roomId = currentDevice.roomId;
+            player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId, videoEl);
+            player.authToken = currentDevice.token;
+            if (globalThis.rtcFileSystemManager) {
+                globalThis.storageAccessors ??= {};
+                // defined in ../app/rtcfilesystem-client.js
+                player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + roomId, 'files');
+            }
+            player.onstatechange = (state) => {
+                if (state == "connected") {
+                    document.getElementById('connectingBox').style.display = "none";
+                    videoEl.style.display = "block";
+                }
+            };
+            player.connect();
+        }
+    };
+    let dragging = false;
+    let dragTimer = null;
+    let sendMouse = (action, ev) => {
+        if (player?.state == 'connected') {
+            let rect = videoEl.getBoundingClientRect();
+            let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
+            let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
+            let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
+            if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = 'move';
+            if (action == 'click' && dragging) action = 'up';
+            player.sendMouseEvent(action, x, y, ev.button);
+            ev.preventDefault();
+        }
+    };
+    videoEl.addEventListener('click', (ev) => sendMouse('click', ev));
+    videoEl.addEventListener('auxclick', (ev) => sendMouse('click', ev));
+    videoEl.addEventListener('pointerdown', (ev) => {
+        videoEl.setPointerCapture(ev.pointerId);
+        dragTimer = setTimeout(() => {
+            dragging = true;
+            sendMouse('down', ev);
+        }, 200);
+    });
+    videoEl.addEventListener('pointermove', (ev) => dragging && sendMouse('move', ev));
+    videoEl.addEventListener('pointerup', (ev) => {
+        videoEl.releasePointerCapture(ev.pointerId);
+        clearTimeout(dragTimer);
+        if (dragging) {
+            dragging = false;
+            sendMouse('up', ev);
+            let cancelClick = ev => ev.stopPropagation();
+            window.addEventListener('click', cancelClick, true);
+            setTimeout(() => window.removeEventListener('click', cancelClick, true), 10);
+        }
+    });
+    videoEl.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        if (!dragging && ev.button === -1) {
+            // Oculus Quest B button fires contextmenu event w/o pointerdown/up.
+            sendMouse('click', { button: 2, clientX: ev.clientX, clientY: ev.clientY, preventDefault: () => { } });
+        }
+    });
+    window.addEventListener('keydown', (ev) => {
+        if (player?.state == 'connected') {
+            player.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+            ev.preventDefault();
+        }
+    });
+    document.getElementById('playButton')?.addEventListener('click', (ev) => playStream(currentDevice));
+    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => document.getElementById('player').requestFullscreen());
+    document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
+        player?.disconnect();
+        document.body.classList.remove('player');
+    });
+    return playStream;
+}
+
+function initPublisher(playStream) {
     /**
      * @template {keyof HTMLElementTagNameMap} T
      * @param {T} tag 
@@ -907,7 +996,6 @@ window.addEventListener('DOMContentLoaded', (ev) => {
         document.body.classList.add('standalone');
     }
     document.querySelector('#clearSettingsButton').addEventListener('click', (ev) => confirm('CLear all settings?') && Settings.clear());
-
 
     // Publisher
     /** @typedef {{cm: ConnectionManager, streamProvider?: StreamProvider&Record<string,any>, el: HTMLElement}} DeviceState */
@@ -1063,12 +1151,8 @@ window.addEventListener('DOMContentLoaded', (ev) => {
                     mkEl('button', 'Share Camera', { onclick: (_) => addStream(ds, streamListEl, true) }),
                 );
             }
-            el.append(mkEl('button', 'Open Remote Desktop', {
-                onclick: (_ev) => {
-                    currentDevice = d;
-                    playStream();
-                }
-            }));
+            // el.append(mkEl('button', 'Open Remote Desktop', { onclick: (_ev) => playStream(d) }));
+            el.append(mkEl('a', 'Open Remote Desktop', { target: '_blank', href: '#room:' + d.roomId }));
             parentEl.append(el);
             devices[d.roomId] = ds;
             initStreams(ds);
@@ -1087,92 +1171,20 @@ window.addEventListener('DOMContentLoaded', (ev) => {
     };
     onSettingUpdated(Settings.getPeerDevices());
     Settings.onsettingsupdate = onSettingUpdated;
+}
 
-
-    // Player
-    /** @type {PlayerConnection|null} */
-    let player = null;
-    /** @type {HTMLVideoElement} */
-    let videoEl = document.querySelector('#screen');
-    /** @type {DeviceSettings} */
-    let currentDevice = null;
-    let playStream = () => {
-        player?.disconnect();
-        videoEl.style.display = "none";
-        if (currentDevice) {
-            document.getElementById('connectingBox').style.display = "block";
-            document.body.classList.add('player');
-            let roomId = currentDevice.roomId;
-            player = new PlayerConnection(signalingUrl, currentDevice.signalingKey, roomId, videoEl);
-            player.authToken = currentDevice.token;
-            if (globalThis.rtcFileSystemManager) {
-                globalThis.storageAccessors ??= {};
-                // defined in ../app/rtcfilesystem-client.js
-                player.dataChannels['fileServer'] = globalThis.rtcFileSystemManager.getRtcChannelSpec('RDP-' + roomId, 'files');
-            }
-            player.onstatechange = (state) => {
-                if (state == "connected") {
-                    videoEl.style.display = "block";
-                    document.getElementById('connectingBox').style.display = "none";
-                }
-            };
-            player.connect();
+window.addEventListener('DOMContentLoaded', (ev) => {
+    let playStream = initPlayer();
+    let m = decodeURI(location.hash).match(/[&#]room:([^&]+)/);
+    if (m) {
+        let d = Settings.getPeerDevices().find(d => d.roomId == m[1]);
+        if (d) {
+            let closeEl = document.getElementById('closePlayerButton');
+            if (closeEl) { closeEl.style.display = "none"; }
+            playStream(d);
+            return;
         }
-    };
-    let dragging = false;
-    let dragTimer = null;
-    let sendMouse = (action, ev) => {
-        if (player?.state == 'connected') {
-            let rect = videoEl.getBoundingClientRect();
-            let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
-            let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
-            let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
-            if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = 'move';
-            if (action == 'click' && dragging) action = 'up';
-            player.sendMouseEvent(action, x, y, ev.button);
-            ev.preventDefault();
-        }
-    };
-    videoEl.addEventListener('click', (ev) => sendMouse('click', ev));
-    videoEl.addEventListener('auxclick', (ev) => sendMouse('click', ev));
-    videoEl.addEventListener('pointerdown', (ev) => {
-        videoEl.setPointerCapture(ev.pointerId);
-        dragTimer = setTimeout(() => {
-            dragging = true;
-            sendMouse('down', ev);
-        }, 200);
-    });
-    videoEl.addEventListener('pointermove', (ev) => dragging && sendMouse('move', ev));
-    videoEl.addEventListener('pointerup', (ev) => {
-        videoEl.releasePointerCapture(ev.pointerId);
-        clearTimeout(dragTimer);
-        if (dragging) {
-            dragging = false;
-            sendMouse('up', ev);
-            let cancelClick = ev => ev.stopPropagation();
-            window.addEventListener('click', cancelClick, true);
-            setTimeout(() => window.removeEventListener('click', cancelClick, true), 10);
-        }
-    });
-    videoEl.addEventListener('contextmenu', (ev) => {
-        ev.preventDefault();
-        if (!dragging && ev.button === -1) {
-            // Oculus Quest B button fires contextmenu event w/o pointerdown/up.
-            sendMouse('click', { button: 2, clientX: ev.clientX, clientY: ev.clientY, preventDefault: () => { } });
-        }
-    });
-    window.addEventListener('keydown', (ev) => {
-        if (player?.state == 'connected') {
-            player.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
-            ev.preventDefault();
-        }
-    });
-    document.getElementById('playButton')?.addEventListener('click', (ev) => playStream());
-    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => document.getElementById('player').requestFullscreen());
-    document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
-        player?.disconnect();
-        document.body.classList.remove('player');
-    });
-
+    }
+    initPublisher(playStream);
     initPairing();
 }, { once: true });
