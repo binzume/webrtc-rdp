@@ -921,12 +921,28 @@ function initPlayer() {
     };
     let dragging = false;
     let dragTimer = null;
+    let mousePos = { x: 0, y: 0 };
+    let updateMousePos = (ev) => {
+        let rect = videoEl.getBoundingClientRect();
+        let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
+        let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
+        let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
+        mousePos = { x: x, y: y };
+    };
     let sendMouse = (action, ev) => {
         if (player?.state == 'connected') {
-            let rect = videoEl.getBoundingClientRect();
-            let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
-            let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
-            let x = (ev.clientX - rect.left - (rect.width - vw) / 2) / vw, y = (ev.clientY - rect.top - (rect.height - vh) / 2) / vh;
+            updateMousePos(ev);
+            if (action == 'click' && cancelSelect) {
+                (async () => {
+                    let stream = await player.sendRpcAsync('streamFromPoint', { x: mousePos.x, y: mousePos.y });
+                    if (stream && cancelSelect) {
+                        cancelSelect();
+                        player.sendRpcAsync('play', { streamId: stream.id, redirect: true });
+                    }
+                })();
+                return;
+            }
+            let x = mousePos.x, y = mousePos.y;
             if (action != 'up' && (x > 1 || x < 0 || y > 1 || y < 0)) action = 'move';
             if (action == 'click' && dragging) action = 'up';
             player.sendMouseEvent(action, x, y, ev.button);
@@ -935,6 +951,7 @@ function initPlayer() {
     };
     videoEl.addEventListener('click', (ev) => sendMouse('click', ev));
     videoEl.addEventListener('auxclick', (ev) => sendMouse('click', ev));
+    videoEl.addEventListener('mousemove', (ev) => updateMousePos(ev));
     videoEl.addEventListener('pointerdown', (ev) => {
         videoEl.setPointerCapture(ev.pointerId);
         dragTimer = setTimeout(() => {
@@ -972,6 +989,39 @@ function initPlayer() {
     document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
         player?.disconnect();
         document.body.classList.remove('player');
+    });
+    let cancelSelect = null;
+    document.getElementById('selectWindowButton')?.addEventListener('click', (ev) => {
+        if (cancelSelect) {
+            cancelSelect();
+        } else {
+            let boxEl = document.createElement('div');
+            boxEl.className = 'streamrect';
+            videoEl.parentElement.append(boxEl);
+            let selectWindowTimer = setInterval(async () => {
+                if (player?.state != 'connected') {
+                    cancelSelect?.();
+                    return;
+                }
+                let stream = await player.sendRpcAsync('streamFromPoint', { x: mousePos.x, y: mousePos.y });
+                if (!cancelSelect || !stream) {
+                    return;
+                }
+                let rect = videoEl.getBoundingClientRect();
+                let vw = Math.min(rect.width, rect.height * videoEl.videoWidth / videoEl.videoHeight);
+                let vh = Math.min(rect.height, rect.width * videoEl.videoHeight / videoEl.videoWidth);
+                boxEl.style.width = (vw * stream.rect.width) + 'px';
+                boxEl.style.height = (vh * stream.rect.height) + 'px';
+                boxEl.style.left = (vw * stream.rect.x + rect.left + (rect.width - vw) / 2) + 'px';
+                boxEl.style.top = (vh * stream.rect.y + rect.top + (rect.height - vh) / 2) + 'px';
+                boxEl.textContent = stream.id;
+            }, 500);
+            cancelSelect = () => {
+                clearInterval(selectWindowTimer);
+                boxEl.parentElement.removeChild(boxEl);
+                cancelSelect = null;
+            };
+        }
     });
     return playStream;
 }

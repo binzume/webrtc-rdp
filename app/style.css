@@ -98,6 +98,16 @@ body.player #player {
     touch-action: none;
 }
 
+#player .streamrect {
+    position: absolute;
+    overflow: hidden;
+    pointer-events: none;
+    box-sizing: border-box;
+    border: 2px solid red;
+    color: green;
+    text-align: center;
+}
+
 .streamlist li {
     list-style-type: none;
     text-align: left;
