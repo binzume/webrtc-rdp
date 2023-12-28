@@ -444,10 +444,14 @@ class PlayerConnection extends BaseConnection {
         });
     }
     sendMouseEvent(action, x, y, button) {
-        this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
+        if (this.state == 'connected') {
+            this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'mouse', action: action, x: x, y: y, button: button }));
+        }
     }
     sendKeyEvent(action, key, code, shift = false, ctrl = false, alt = false) {
-        this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+        if (this.state == 'connected') {
+            this.dataChannels['controlEvent'].ch?.send(JSON.stringify({ type: 'key', action: action, key: key, code: code, shift: shift, ctrl: ctrl, alt: alt }));
+        }
     }
 }
 
@@ -936,9 +940,9 @@ function initPlayer() {
                 (async () => {
                     let stream = await player.sendRpcAsync('streamFromPoint', { x: mousePos.x, y: mousePos.y });
                     if (stream && cancelSelect) {
-                        cancelSelect();
                         player.sendRpcAsync('play', { streamId: stream.id, redirect: true });
                     }
+                    cancelSelect?.();
                 })();
                 return;
             }
@@ -978,23 +982,64 @@ function initPlayer() {
             sendMouse('click', { button: 2, clientX: ev.clientX, clientY: ev.clientY, preventDefault: () => { } });
         }
     });
-    window.addEventListener('keydown', (ev) => {
-        if (player?.state == 'connected') {
-            player.sendKeyEvent('press', ev.key, ev.code, ev.shiftKey, ev.ctrlKey, ev.altKey);
+
+    let modKeyState = {};
+    let updateModKeyState = (key, state) => {
+        let modkey = ['Shift', 'Control', 'Alt'].includes(key);
+        if (modkey) {
+            modKeyState[key] = state;
+            let el = document.getElementById('toggle' + key + 'Button');
+            state ? el?.classList.add('active') : el?.classList.remove('active');
+        }
+        return modkey;
+    };
+    document.addEventListener('keydown', (ev) => {
+        let modkey = updateModKeyState(ev.key, true);
+        player?.sendKeyEvent(modkey ? 'down' : 'press', ev.key, ev.code, modKeyState['Shift'], modKeyState['Control'], modKeyState['Alt']);
+        ev.preventDefault();
+    });
+    document.addEventListener('keyup', (ev) => {
+        if (updateModKeyState(ev.key, false)) {
+            player?.sendKeyEvent('up', ev.key, ev.code, modKeyState['Shift'], modKeyState['Control'], modKeyState['Alt']);
             ev.preventDefault();
         }
     });
     document.getElementById('playButton')?.addEventListener('click', (ev) => playStream(currentDevice));
-    document.getElementById('fullscreenButton')?.addEventListener('click', (ev) => document.getElementById('player').requestFullscreen());
+    let fullscreenButtonEl = document.getElementById('fullscreenButton');
+    fullscreenButtonEl?.addEventListener('click', (ev) =>
+        document.fullscreenElement ?
+            document.exitFullscreen() :
+            document.getElementById('player').requestFullscreen());
+    document.addEventListener('fullscreenchange', (ev) => {
+        document.fullscreenElement ?
+            fullscreenButtonEl.classList.add('active') :
+            fullscreenButtonEl.classList.remove('active');
+    });
+    for (let key of ['Shift', 'Control', 'Alt']) {
+        let el = document.getElementById('toggle' + key + 'Button');
+        el?.addEventListener('click', (ev) => {
+            let down = !el.classList.contains('active');
+            updateModKeyState(key, down);
+            player?.sendKeyEvent(down ? 'down' : 'up', key, key + 'Left', modKeyState['Shift'], modKeyState['Control'], modKeyState['Alt']);
+        });
+    }
     document.getElementById('closePlayerButton')?.addEventListener('click', (ev) => {
         player?.disconnect();
         document.body.classList.remove('player');
     });
+    let muteEl = document.getElementById('muteButton');
+    if (muteEl) {
+        videoEl.muted ? muteEl.classList.add('active') : muteEl.classList.remove('active');
+        muteEl.addEventListener('click', (ev) => {
+            videoEl.muted = muteEl.classList.toggle('active');
+        });
+    }
     let cancelSelect = null;
     document.getElementById('selectWindowButton')?.addEventListener('click', (ev) => {
         if (cancelSelect) {
             cancelSelect();
         } else {
+            document.getElementById('selectWindowButton').classList.add('active');
             let boxEl = document.createElement('div');
             boxEl.className = 'streamrect';
             videoEl.parentElement.append(boxEl);
@@ -1020,6 +1065,7 @@ function initPlayer() {
                 clearInterval(selectWindowTimer);
                 boxEl.parentElement.removeChild(boxEl);
                 cancelSelect = null;
+                document.getElementById('selectWindowButton').classList.remove('active');
             };
         }
     });

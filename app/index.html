@@ -46,15 +46,18 @@
   </div>
   </div>
 
-  <div id="player">
+  <div id="player" style="width: 100%; height: 100vh; position: relative; overflow: hidden;">
     <div id="player-menu">
       <button id="closePlayerButton">Back</button>
-      <button id="playButton">Reconnect</button>
-      <button id="selectWindowButton">Select Window</button>
-      <button id="fullscreenButton">Fullscreen</button>
+      <button id="playButton">Reset</button>
+      <button id="toggleShiftButton" class='onoff'>Shift</button>
+      <button id="toggleControlButton" class='onoff'>Ctrl</button>
+      <button id="toggleAltButton" class='onoff'>Alt</button>
+      <button id="selectWindowButton" class='onoff'>Select Window</button>
+      <button id="muteButton" class='onoff'>Mute</button>
+      <button id="fullscreenButton" class='onoff'>Fullscreen</button>
     </div>
-    <video id="screen" autoplay playsinline
-      style="width:100%; height: calc(100vh - 20pt); border: 0px; display:none;"></video>
+    <video id="screen" autoplay playsinline style="width: 100%; height: calc(100vh - 20pt); border: 0px; display:none;"></video>
     <div id="connectingBox" style="margin: 50pt 0;font-size: 40pt;">Connecting...</div>
   </div>
 
