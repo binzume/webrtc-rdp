@@ -8,7 +8,8 @@
     "start-debug": "electron . --debug",
     "prepare": "npx electron-rebuild",
     "build-win": "npx electron-builder --win --x64",
-    "build-mac": "npx electron-builder --mac --x64 --dir"
+    "build-mac": "npx electron-builder --mac --x64 --dir",
+    "build-mac-arm64": "npx electron-builder --mac --arm64 --dir"
   },
   "repository": "https://github.com/binzume/webrtc-rdp",
   "keywords": [
