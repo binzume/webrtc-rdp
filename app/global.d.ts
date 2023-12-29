@@ -44,6 +44,7 @@ declare interface DeviceSettings {
     signalingKey: string | null
     userAgent: string
     token: string
+    mode?: string
 }
 
 

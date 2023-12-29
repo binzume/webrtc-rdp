@@ -204,7 +204,6 @@ class PairingConnection extends BaseConnection {
         this.pinLength = 6;
         this.userAgent = navigator.userAgent;
         this.pinTimeoutMs = 3600000;
-        this.isolatedRoom = true;
         this.version = 1;
     }
 
@@ -212,20 +211,22 @@ class PairingConnection extends BaseConnection {
         return pin && pin.length == this.pinLength;
     }
 
-    async startPairing() {
+    async startPairing(localServices = null) {
         this.disconnect();
         this.connectTimeoutMs = this.pinTimeoutMs;
+        let localRoomId = roomIdPrefix + this._generateSecret(16);
+        let localToken = this._generateSecret(16);
+        let playOnly = localServices?.length == 0;
         let pin = this._generatePin();
-        let publishRoomId = this.isolatedRoom ? roomIdPrefix + this._generateSecret(16) : null;
-        let token = this._generateSecret(16);
 
         this.dataChannels['secretExchange'] = {
             onopen: (ch, ev) => {
                 ch.send(JSON.stringify({
                     type: "hello",
-                    roomId: publishRoomId,
-                    token: token,
-                    signalingKey: publishRoomId ? signalingKey : null,
+                    roomId: playOnly ? null : localRoomId,
+                    token: playOnly ? null : localToken,
+                    signalingKey: playOnly ? null : signalingKey,
+                    services: localServices,
                     userAgent: this.userAgent,
                     version: this.version
                 }));
@@ -234,13 +235,16 @@ class PairingConnection extends BaseConnection {
                 console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
+                    let isClient = playOnly || msg.services?.includes('no-client');
                     Settings.addPeerDevice({
-                        roomId: msg.roomId,
-                        publishRoomId: publishRoomId,
-                        localToken: token,
+                        roomId: msg.roomId || localRoomId,
+                        publishRoomId: localRoomId,
+                        localToken: localToken,
                         token: msg.token,
                         signalingKey: msg.signalingKey,
-                        userAgent: msg.userAgent
+                        userAgent: msg.userAgent,
+                        name: msg.name,
+                        mode: isClient ? 'client' : msg.roomId ? null : 'server'
                     });
                     this.disconnect();
                 }
@@ -251,12 +255,15 @@ class PairingConnection extends BaseConnection {
         return pin;
     }
 
-    async sendPin(pin) {
+    async sendPin(pin, localServices = null) {
         if (!this.validatePin(pin)) {
             throw "invalid pin";
         }
         this.disconnect();
         this.connectTimeoutMs = 10000;
+        let localRoomId = roomIdPrefix + this._generateSecret(16);
+        let localToken = this._generateSecret(16);
+        let playOnly = localServices?.length == 0;
 
         this.dataChannels['secretExchange'] = {
             onmessage: (ch, ev) => {
@@ -267,17 +274,26 @@ class PairingConnection extends BaseConnection {
                         console.log('Unsupported version: ' + msg.version);
                         this.disconnect();
                     }
-                    let publishRoomId = roomIdPrefix + this._generateSecret(16);
-                    let roomId = msg.roomId || publishRoomId
-                    let token = this._generateSecret(16);
-                    ch.send(JSON.stringify({ type: "credential", roomId: publishRoomId, signalingKey: signalingKey, token: token, userAgent: this.userAgent }));
+                    let roomId = msg.roomId || localRoomId
+                    ch.send(JSON.stringify({
+                        type: "credential",
+                        roomId: playOnly ? null : localRoomId,
+                        token: playOnly ? null : localToken,
+                        signalingKey: playOnly ? null : signalingKey,
+                        services: localServices,
+                        userAgent: this.userAgent,
+                        version: this.version,
+                    }));
+                    let isClient = playOnly || msg.services?.includes('no-client');
                     Settings.addPeerDevice({
                         roomId: roomId,
-                        publishRoomId: msg.roomId ? publishRoomId : null,
+                        publishRoomId: localRoomId,
+                        localToken: localToken,
                         token: msg.token,
-                        localToken: token,
-                        signalingKey: msg.signalingKey || signalingKey,
-                        userAgent: msg.userAgent
+                        signalingKey: msg.signalingKey,
+                        userAgent: msg.userAgent,
+                        name: msg.name,
+                        mode: isClient ? 'client' : msg.roomId ? null : 'server'
                     });
                     this.disconnect();
                 }
@@ -870,9 +886,11 @@ function initPairing() {
         document.getElementById("pinInputBox").style.display = "block";
     });
     document.getElementById('pinInputBox').addEventListener('submit', (ev) => {
-        let pin = /** @type {HTMLInputElement} */(document.getElementById("pinInput")).value.trim();
+        let inputEl = /** @type {HTMLInputElement} */(document.getElementById("pinInput"));
+        let pin = inputEl.value.trim();
         if (pairing.validatePin(pin)) {
             document.getElementById("pinInputBox").style.display = "none";
+            inputEl.value = '';
             pairing.sendPin(pin);
         }
         ev.preventDefault();
@@ -996,12 +1014,16 @@ function initPlayer() {
     document.addEventListener('keydown', (ev) => {
         let modkey = updateModKeyState(ev.key, true);
         player?.sendKeyEvent(modkey ? 'down' : 'press', ev.key, ev.code, modKeyState['Shift'], modKeyState['Control'], modKeyState['Alt']);
-        ev.preventDefault();
+        if (player) {
+            ev.preventDefault();
+        }
     });
     document.addEventListener('keyup', (ev) => {
         if (updateModKeyState(ev.key, false)) {
             player?.sendKeyEvent('up', ev.key, ev.code, modKeyState['Shift'], modKeyState['Control'], modKeyState['Alt']);
-            ev.preventDefault();
+            if (player) {
+                ev.preventDefault();
+            }
         }
     });
     document.getElementById('playButton')?.addEventListener('click', (ev) => playStream(currentDevice));
@@ -1239,7 +1261,7 @@ function initPublisher(playStream) {
             });
             let el = mkEl('div', [mkEl('span', [titleEl, removeButtonEl]), listEl]);
             let ds = { el: el, cm: cm };
-            if (addStream) {
+            if (d.mode != 'client' && addStream) {
                 let streamListEl = mkEl('ul', [], { className: 'streamlist' });
                 el.append(
                     streamListEl,
@@ -1247,8 +1269,10 @@ function initPublisher(playStream) {
                     mkEl('button', 'Share Camera', { onclick: (_) => addStream(ds, streamListEl, true) }),
                 );
             }
-            // el.append(mkEl('button', 'Open Remote Desktop', { onclick: (_ev) => playStream(d) }));
-            el.append(mkEl('a', 'Open Remote Desktop', { target: '_blank', href: '#room:' + d.roomId }));
+            if (d.mode != 'server') {
+                // el.append(mkEl('button', 'Open Remote Desktop', { onclick: (_ev) => playStream(d) }));
+                el.append(mkEl('a', 'Open Remote Desktop', { target: '_blank', href: '#room:' + d.roomId }));
+            }
             parentEl.append(el);
             devices[d.roomId] = ds;
             initStreams(ds);
