@@ -172,3 +172,22 @@ body.player #player {
 .onoff.active {
     background-color: lightgreen;
 }
+
+.loading-spinner {
+	display: block;
+    padding: 10px;
+	text-align: center;
+}
+
+.loading-spinner::before {
+	display: inline-block;
+	width: 30px;
+	height: 30px;
+	border: 2px solid #aaa;
+	content: "";
+	animation: loading-animation 1s linear infinite;
+}
+@keyframes loading-animation {
+	0%   { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}
