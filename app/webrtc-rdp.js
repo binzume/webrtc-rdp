@@ -235,18 +235,7 @@ class PairingConnection extends BaseConnection {
                 console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    let isClient = playOnly || msg.services?.includes('no-client');
-                    Settings.addPeerDevice({
-                        roomId: msg.roomId || localRoomId,
-                        publishRoomId: localRoomId,
-                        localToken: localToken,
-                        token: msg.token,
-                        signalingKey: msg.signalingKey,
-                        userAgent: msg.userAgent,
-                        name: msg.name,
-                        mode: isClient ? 'client' : msg.roomId ? null : 'server'
-                    });
-                    this.disconnect();
+                    this._finishParing(msg,localRoomId, localToken, playOnly);
                 }
             },
         };
@@ -274,7 +263,6 @@ class PairingConnection extends BaseConnection {
                         console.log('Unsupported version: ' + msg.version);
                         this.disconnect();
                     }
-                    let roomId = msg.roomId || localRoomId
                     ch.send(JSON.stringify({
                         type: "credential",
                         roomId: playOnly ? null : localRoomId,
@@ -284,23 +272,26 @@ class PairingConnection extends BaseConnection {
                         userAgent: this.userAgent,
                         version: this.version,
                     }));
-                    let isClient = playOnly || msg.services?.includes('no-client');
-                    Settings.addPeerDevice({
-                        roomId: roomId,
-                        publishRoomId: localRoomId,
-                        localToken: localToken,
-                        token: msg.token,
-                        signalingKey: msg.signalingKey,
-                        userAgent: msg.userAgent,
-                        name: msg.name,
-                        mode: isClient ? 'client' : msg.roomId ? null : 'server'
-                    });
-                    this.disconnect();
+                    this._finishParing(msg,localRoomId, localToken, playOnly);
                 }
             },
         };
         this.roomId = roomIdPinPrefix + pin;
         await this.connect();
+    }
+
+    _finishParing(msg,localRoomId, localToken, playOnly) {
+        Settings.addPeerDevice({
+            roomId: msg.roomId || localRoomId,
+            publishRoomId: localRoomId,
+            localToken: localToken,
+            token: msg.token,
+            signalingKey: msg.signalingKey,
+            services: msg.services || (playOnly ? ['no-client'] : null),
+            userAgent: msg.userAgent,
+            name: msg.name,
+        });
+        this.disconnect();
     }
 
     _generatePin() {
@@ -1261,7 +1252,7 @@ function initPublisher(playStream) {
             });
             let el = mkEl('div', [mkEl('span', [titleEl, removeButtonEl]), listEl]);
             let ds = { el: el, cm: cm };
-            if (d.mode != 'client' && addStream) {
+            if (!d.services?.includes('no-client') && addStream) {
                 let streamListEl = mkEl('ul', [], { className: 'streamlist' });
                 el.append(
                     streamListEl,
@@ -1269,7 +1260,7 @@ function initPublisher(playStream) {
                     mkEl('button', 'Share Camera', { onclick: (_) => addStream(ds, streamListEl, true) }),
                 );
             }
-            if (d.mode != 'server') {
+            if (d.services?.includes('screen') ?? true) {
                 // el.append(mkEl('button', 'Open Remote Desktop', { onclick: (_ev) => playStream(d) }));
                 el.append(mkEl('a', 'Open Remote Desktop', { target: '_blank', href: '#room:' + d.roomId }));
             }
