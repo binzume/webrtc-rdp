@@ -203,6 +203,7 @@ class PairingConnection extends BaseConnection {
         super(signalingUrl, signalingKey, '');
         this.pinLength = 6;
         this.userAgent = navigator.userAgent;
+        this.localServices = null;
         this.pinTimeoutMs = 3600000;
         this.version = 1;
     }
@@ -211,31 +212,22 @@ class PairingConnection extends BaseConnection {
         return pin && pin.length == this.pinLength;
     }
 
-    async startPairing(localServices = null) {
+    async startPairing() {
         this.disconnect();
         this.connectTimeoutMs = this.pinTimeoutMs;
         let localRoomId = roomIdPrefix + this._generateSecret(16);
         let localToken = this._generateSecret(16);
-        let playOnly = localServices?.length == 0;
         let pin = this._generatePin();
 
         this.dataChannels['secretExchange'] = {
             onopen: (ch, ev) => {
-                ch.send(JSON.stringify({
-                    type: "hello",
-                    roomId: playOnly ? null : localRoomId,
-                    token: playOnly ? null : localToken,
-                    signalingKey: playOnly ? null : signalingKey,
-                    services: localServices,
-                    userAgent: this.userAgent,
-                    version: this.version
-                }));
+                ch.send(JSON.stringify(this._getPairingInfo('hello', localRoomId, localToken)));
             },
             onmessage: (_ch, ev) => {
                 console.log('pairing event', ev.data);
                 let msg = JSON.parse(ev.data);
                 if (msg.type == 'credential') {
-                    this._finishParing(msg,localRoomId, localToken, playOnly);
+                    this._finishPairing(msg, localRoomId, localToken);
                 }
             },
         };
@@ -244,7 +236,7 @@ class PairingConnection extends BaseConnection {
         return pin;
     }
 
-    async sendPin(pin, localServices = null) {
+    async sendPin(pin) {
         if (!this.validatePin(pin)) {
             throw "invalid pin";
         }
@@ -252,7 +244,6 @@ class PairingConnection extends BaseConnection {
         this.connectTimeoutMs = 10000;
         let localRoomId = roomIdPrefix + this._generateSecret(16);
         let localToken = this._generateSecret(16);
-        let playOnly = localServices?.length == 0;
 
         this.dataChannels['secretExchange'] = {
             onmessage: (ch, ev) => {
@@ -263,16 +254,8 @@ class PairingConnection extends BaseConnection {
                         console.log('Unsupported version: ' + msg.version);
                         this.disconnect();
                     }
-                    ch.send(JSON.stringify({
-                        type: "credential",
-                        roomId: playOnly ? null : localRoomId,
-                        token: playOnly ? null : localToken,
-                        signalingKey: playOnly ? null : signalingKey,
-                        services: localServices,
-                        userAgent: this.userAgent,
-                        version: this.version,
-                    }));
-                    this._finishParing(msg,localRoomId, localToken, playOnly);
+                    ch.send(JSON.stringify(this._getPairingInfo('credential', localRoomId, localToken)));
+                    this._finishPairing(msg, localRoomId, localToken);
                 }
             },
         };
@@ -280,14 +263,29 @@ class PairingConnection extends BaseConnection {
         await this.connect();
     }
 
-    _finishParing(msg,localRoomId, localToken, playOnly) {
+    _getPairingInfo(type, localRoomId, localToken) {
+        let isGuest = this.localServices?.length == 0;
+        return {
+            type: type,
+            roomId: localRoomId,
+            token: isGuest ? null : localToken,
+            signalingKey: isGuest ? null : signalingKey,
+            services: this.localServices,
+            userAgent: this.userAgent,
+            version: this.version,
+        };
+    }
+
+    _finishPairing(msg, localRoomId, localToken) {
+        let isGuest = this.localServices?.length == 0;
+        let isHost = this.localServices?.includes('no-client');
         Settings.addPeerDevice({
             roomId: msg.roomId || localRoomId,
             publishRoomId: localRoomId,
             localToken: localToken,
             token: msg.token,
             signalingKey: msg.signalingKey,
-            services: msg.services || (playOnly ? ['no-client'] : null),
+            services: msg.services || (isGuest ? ['no-client', 'screen', 'file'] : isHost ? [] : null),
             userAgent: msg.userAgent,
             name: msg.name,
         });
@@ -882,17 +880,21 @@ function initPairing() {
         if (pairing.validatePin(pin)) {
             document.getElementById("pinInputBox").style.display = "none";
             inputEl.value = '';
+            pairing.localServices = null;
             pairing.sendPin(pin);
         }
         ev.preventDefault();
     });
-    document.querySelector('#generatePin').addEventListener('click', async (ev) => {
+    document.getElementById('generatePin').addEventListener('click', async (ev) => {
         document.getElementById("pinDisplayBox").style.display = "block";
         document.getElementById("pinInputBox").style.display = "none";
         let pinEl = document.getElementById("pin");
         pinEl.innerText = "......";
         pinEl.innerText = await pairing.startPairing();
         pairing.onstatechange = (state) => {
+            let mode = /** @type {HTMLSelectElement} */(document.getElementById('modeSelect')).value;
+            pairing.localServices = mode == 'guest' ? [] :
+                mode == 'host' ? ['no-client', 'screen', 'file'] : ['screen', 'file'];
             if (state == "disconnected") {
                 pinEl.innerText = "......";
             }
