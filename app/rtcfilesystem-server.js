@@ -170,7 +170,7 @@ class FileSystemWrapper {
     async statInternal(handle) {
         if (handle.kind == 'file') {
             let f = await handle.getFile();
-            let stat = { type: f.type || 'file', name: f.name, size: f.size, updatedTime: f.lastModified }
+            let stat = { type: f.type || this._typeFromName(f.name), name: f.name, size: f.size, updatedTime: f.lastModified }
             if (["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"].includes(f.type)) {
                 stat.metadata = { thumbnail: "#thumbnail.jpeg" };
             }
@@ -178,6 +178,30 @@ class FileSystemWrapper {
         } else {
             return { type: 'directory', size: 0, name: handle.name, updatedTime: null }
         }
+    }
+
+    _typeFromName(name) {
+        return {
+            // video
+            ".mp4": "video/mp4",
+            ".m4v": "video/mp4",
+            ".f4v": "video/mp4",
+            ".mov": "video/mp4",
+            ".webm": "video/webm",
+            ".ogv": "video/ogv",
+            // image
+            ".jpeg": "image/jpeg",
+            ".jpg": "image/jpeg",
+            ".gif": "image/gif",
+            ".png": "image/png",
+            ".bmp": "image/bmp",
+            ".webp": "image/webp",
+            // audio
+            ".aac": "audio/aac",
+            ".mp3": "audio/mp3",
+            ".ogg": "audio/ogg",
+            ".mid": "audio/midi",
+        }[name.split('.').pop()] || '';
     }
 
     /**
