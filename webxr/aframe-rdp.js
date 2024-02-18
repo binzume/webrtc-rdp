@@ -213,6 +213,7 @@ class PlayerConnection extends BaseConnection {
 		this.authToken = null;
 		this.services = null;
 		this.onauth = null;
+		this.onstreaminfo = null;
 		this.dataChannels['controlEvent'] = {
 			onopen: async (ch, ev) => {
 				if (window.crypto?.subtle) {
@@ -245,6 +246,8 @@ class PlayerConnection extends BaseConnection {
 				} else if (msg.type == 'authResult') {
 					this.services = msg.services;
 					this.onauth?.(msg.result);
+				} else if (msg.type == 'streamInfo') {
+					this.onstreaminfo?.(msg);
 				} else if (msg.type == 'rpcResult') {
 					this._rpcResultHandler[msg.reqId]?.(msg);
 				}
@@ -558,7 +561,7 @@ AFRAME.registerComponent('webrtc-rdp', {
 		let settings = Settings.findPeerDevice(data.roomId) || { userAgent: '' };
 		let roomId = this.tempRoomId || data.roomId;
 		if (this.el.components.xywindow) {
-			this.el.setAttribute("xywindow", "title", "RDP:" + this._settingName(settings));
+			this.el.setAttribute("xywindow", "title", this._settingName(settings));
 		}
 
 		// video element
@@ -609,6 +612,11 @@ AFRAME.registerComponent('webrtc-rdp', {
 			}
 			if (player.services && player.services['RDP'] === undefined) {
 				this._byName('statusMessage').setAttribute('value', 'No desktop');
+			}
+		};
+		player.onstreaminfo = (info) => {
+			if (info.title) {
+				this.el.setAttribute("xywindow", "title", this._settingName(settings) + ' - ' + info.title);
 			}
 		};
 		player.connect();

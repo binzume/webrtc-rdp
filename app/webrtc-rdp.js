@@ -763,8 +763,8 @@ class ElectronStreamProvider {
     /**
      * @returns {Promise<StreamSpec[]>}
      */
-    async getStreams() {
-        return await RDP.getDisplayStreams(this.streamTypes);
+    async getStreams(all = false) {
+        return await RDP.getDisplayStreams(all ? ['screen', 'window'] : this.streamTypes);
     }
     /**
      * @param {StreamSpec} s 
@@ -805,6 +805,9 @@ class ElectronStreamProvider {
                     let msg = JSON.parse(ev.data);
                     if (msg.type == 'auth') {
                         authorized = await cm.auth(msg, ch, true);
+                        if (s.name && s.name != 'unknown' && authorized) {
+                            ch.send(JSON.stringify({ type: 'streamInfo', title: s.name }));
+                        }
                     } else if (authorized) {
                         this._handleMessage(cm, s, ch, msg, c)
                     }
@@ -844,7 +847,7 @@ class ElectronStreamProvider {
             let si = await RDP.streamFromPoint({ target: s, x: msg.params.x, y: msg.params.y });
             ch.send(JSON.stringify({ type: 'rpcResult', name: msg.name, reqId: msg.reqId, value: si }));
         } else if (msg.type == 'rpc' && msg.name == 'play') {
-            let streams = await this.getStreams();
+            let streams = await this.getStreams(true);
             let s = streams.find(s => s.id == msg.params.streamId) || { id: msg.params.streamId, name: 'unknown' };
             let c = await this.startStream(cm, s);
             if (msg.params.redirect) {
